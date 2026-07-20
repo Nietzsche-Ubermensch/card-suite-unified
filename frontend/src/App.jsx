@@ -2,10 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 
 const API = 'http://localhost:3999/api';
 
-const SPORTS = ['baseball', 'football', 'basketball', 'hockey', 'wrestling'];
+const SPORTS = ['wrestling', 'soccer', 'baseball', 'football', 'basketball', 'hockey'];
 const GRADES = ['Raw', 'PSA 10', 'PSA 9', 'PSA 8', 'PSA 7', 'PSA 6', 'PSA 5', 'BGS 10', 'BGS 9', 'BGS 8', 'CGC 10', 'CGC 9', 'CGC 8', 'SGC 10', 'SGC 9', 'SGC 8'];
 
-const emptyCard = { name: '', set: '', grade: 'Raw', price: '', quantity: 1, sport: 'baseball' };
+const emptyCard = { name: '', set: '', grade: 'Raw', price: '', quantity: 1, sport: 'wrestling', serial: '', parallel: '', insert: '', rookie: false };
 
 export default function App() {
   const [cards, setCards] = useState([]);
@@ -21,9 +21,11 @@ export default function App() {
     fetch(`${API}/cards`).then(r => r.json()).then(d => {
       if (d.cards?.length) setCards(d.cards);
       else setCards([
-        { name: 'Mike Trout Rookie', set: '2011 Topps Update', grade: 'PSA 10', price: 5000, quantity: 1, sport: 'baseball' },
-        { name: 'Patrick Mahomes Rookie', set: '2017 Panini Contenders', grade: 'PSA 9', price: 1200, quantity: 1, sport: 'football' },
-        { name: 'John Cena Auto', set: '2022 Topps WWE Heritage', grade: 'Raw', price: 150, quantity: 1, sport: 'wrestling' },
+        { name: 'Arianna Grace', set: '2022 Topps Chrome WWE', grade: 'Raw', price: 25, quantity: 1, sport: 'wrestling', serial: '080/25' },
+        { name: 'Dominik Mysterio', set: '2022 Topps Chrome WWE', grade: 'Raw', price: 45, quantity: 1, sport: 'wrestling', serial: '117/275', parallel: 'Green Refractor' },
+        { name: 'Mercedes Moné', set: '2025 AEW Metal Universe Ring Heroes', grade: 'Raw', price: 75, quantity: 1, sport: 'wrestling', serial: 'RH 15/25' },
+        { name: 'Lionel Messi', set: '2024-25 Panini Donruss Soccer Pitch Kings', grade: 'Raw', price: 50, quantity: 1, sport: 'soccer' },
+        { name: 'James Wood', set: '2023 Bowman Chrome', grade: 'Raw', price: 80, quantity: 1, sport: 'baseball', rookie: true },
       ]);
     }).catch(() => setCards([]));
   }, []);
@@ -97,17 +99,19 @@ export default function App() {
     preview: { background: '#0d0d0f', border: '1px solid #3f3f46', borderRadius: '6px', padding: '12px', fontFamily: 'monospace', fontSize: '12px', whiteSpace: 'pre-wrap', wordBreak: 'break-all', color: '#22c55e', marginTop: '8px' },
     csvBox: { background: '#0d0d0f', border: '1px solid #3f3f46', borderRadius: '6px', padding: '16px', fontFamily: 'monospace', fontSize: '11px', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '600px', overflow: 'auto', color: '#a1a1aa' },
     statBox: { display: 'inline-block', padding: '8px 16px', background: '#27272a', borderRadius: '6px', marginRight: '12px', fontSize: '13px' },
-    sportBadge: (sport) => ({ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600, background: sport === 'wrestling' ? '#7c3aed' : '#2563eb', color: '#fff' }),
+    sportBadge: (sport) => ({ display: 'inline-block', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600, background: sport === 'wrestling' ? '#7c3aed' : sport === 'soccer' ? '#059669' : '#2563eb', color: '#fff' }),
+    rcBadge: { display: 'inline-block', padding: '1px 6px', borderRadius: '3px', fontSize: '10px', fontWeight: 700, background: '#dc2626', color: '#fff', marginLeft: '4px' },
+    serialText: { fontSize: '11px', color: '#a1a1aa', fontFamily: 'monospace' },
   };
 
   return (
     <div style={styles.container}>
       <div style={styles.header}>
         <div>
-          <div style={styles.title}>Card Suite — Sports & Wrestling</div>
-          <div style={{ fontSize: '13px', color: '#71717a', marginTop: '4px' }}>eBay CSV Builder for Sports Cards & Wrestling Cards</div>
+          <div style={styles.title}>Card Suite — Wrestling & Sports</div>
+          <div style={{ fontSize: '13px', color: '#71717a', marginTop: '4px' }}>eBay CSV Builder for Wrestling (WWE/AEW) & Sports Cards</div>
         </div>
-        <div style={styles.badge}>Evolved v2 · Score 1.000</div>
+        <div style={styles.badge}>Evolved v3 · Score 1.000</div>
       </div>
 
       <div style={styles.tabs}>
@@ -148,6 +152,25 @@ export default function App() {
                 <label style={styles.label}>Quantity</label>
                 <input style={styles.input} type="number" value={form.quantity} onChange={e => setForm({ ...form, quantity: e.target.value })} placeholder="1" min="1" />
               </div>
+              <div style={styles.field}>
+                <label style={styles.label}>Serial Number</label>
+                <input style={styles.input} value={form.serial} onChange={e => setForm({ ...form, serial: e.target.value })} placeholder="117/275" />
+              </div>
+              <div style={styles.field}>
+                <label style={styles.label}>Parallel</label>
+                <input style={styles.input} value={form.parallel} onChange={e => setForm({ ...form, parallel: e.target.value })} placeholder="Green Refractor" />
+              </div>
+              <div style={styles.field}>
+                <label style={styles.label}>Insert Set</label>
+                <input style={styles.input} value={form.insert} onChange={e => setForm({ ...form, insert: e.target.value })} placeholder="Blast Furnace" />
+              </div>
+              <div style={styles.field}>
+                <label style={styles.label}>Rookie Card</label>
+                <select style={styles.select} value={form.rookie ? 'yes' : 'no'} onChange={e => setForm({ ...form, rookie: e.target.value === 'yes' })}>
+                  <option value="no">No</option>
+                  <option value="yes">Yes</option>
+                </select>
+              </div>
             </div>
             <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
               <button style={{ ...styles.btn, ...styles.btnPrimary }} onClick={addOrUpdate}>{editingIdx !== null ? 'Update' : 'Add Card'}</button>
@@ -178,6 +201,7 @@ export default function App() {
                     <th style={styles.th}>Set</th>
                     <th style={styles.th}>Sport</th>
                     <th style={styles.th}>Grade</th>
+                    <th style={styles.th}>Serial</th>
                     <th style={styles.th}>Price</th>
                     <th style={styles.th}>Qty</th>
                     <th style={styles.th}></th>
@@ -186,10 +210,14 @@ export default function App() {
                 <tbody>
                   {cards.map((c, i) => (
                     <tr key={i}>
-                      <td style={styles.td}>{c.name}</td>
+                      <td style={styles.td}>
+                        {c.name}
+                        {c.rookie && <span style={styles.rcBadge}>RC</span>}
+                      </td>
                       <td style={styles.td}>{c.set}</td>
                       <td style={styles.td}><span style={styles.sportBadge(c.sport)}>{c.sport}</span></td>
                       <td style={styles.td}>{c.grade}</td>
+                      <td style={styles.td}><span style={styles.serialText}>{c.serial || '—'}</span></td>
                       <td style={styles.td}>${c.price}</td>
                       <td style={styles.td}>{c.quantity}</td>
                       <td style={styles.td}>

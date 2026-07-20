@@ -7,17 +7,14 @@ const HEADERS = ['Item Title','Start Price','Buy It Now','Category','Quantity','
 
 /**
  * Build a CSV row for a single card.
- * Evolved by darwinian-evolver v2 (score: 1.000) for SPORTS + WRESTLING cards.
+ * Evolved by darwinian-evolver v3 (score: 1.000) against REAL rbeachgebay inventory.
  * 
- * Features:
- * - Sport-specific eBay category mapping (baseball/football/basketball/hockey/wrestling)
- * - Wrestling cards (WWE/AEW/ROH/NJPW/TNA) get dedicated wrestling category
- * - Rookie card detection: appends 'RC' to title for eBay SEO
- * - Autograph detection: appends 'Auto' to title for eBay SEO
- * - Grade-based condition mapping (PSA/BGS/CGC/SGC)
- * - CSV escaping for commas, quotes, newlines
- * - Rich description with condition notes and shipping info
- * - Missing grade defaults to 'Raw'
+ * Handles: WWE wrestling, AEW wrestling, Soccer, Baseball, Football, Basketball, Hockey
+ * 
+ * Title includes: name + set + insert + parallel + serial + grade + RC + Auto
+ * Category mapping: Wrestling, Soccer, Baseball, Football, Basketball, Hockey
+ * Condition: PSA/BGS/CGC/SGC grade mapping
+ * CSV escaping for commas, quotes, newlines
  */
 function buildRow(card, idx) {
   const errs = [];
@@ -41,29 +38,41 @@ function buildRow(card, idx) {
     return str;
   }
 
-  // Title: name + set + grade, with RC and Auto detection
-  let title = `${card.name} ${card.set} ${grade}`.replace(/\s+/g, ' ').trim();
-  const nameSetStr = `${card.name} ${card.set}`.toLowerCase();
-  if ((card.rc || /\brookie\b|\brc\b/i.test(nameSetStr)) && !/\brc\b/i.test(title)) {
+  // Build title components: name, set, insert, parallel, serial, grade
+  const parts = [card.name, card.set];
+  if (card.insert && String(card.insert).trim()) parts.push(String(card.insert).trim());
+  if (card.parallel && String(card.parallel).trim()) parts.push(String(card.parallel).trim());
+  if (card.serial && String(card.serial).trim()) parts.push(String(card.serial).trim());
+  parts.push(grade);
+  let title = parts.join(' ').replace(/\s+/g, ' ').trim();
+
+  // Rookie and Auto detection
+  const nameSetStr = `${card.name} ${card.set} ${card.insert || ''} ${card.parallel || ''}`.toLowerCase();
+  const isRookie = card.rookie === true || card.rc === true ||
+    /\brookie\b|\brc\b|\b1st\s*bowman\b|\bbowman\s*1st\b|\bfirst\s*bowman\b/.test(nameSetStr);
+  const isAuto = card.auto === true ||
+    /\bauto\b|\bautograph\b|\bsignature\b|\bsigned\b/.test(nameSetStr);
+  if (isRookie && !/\brc\b/i.test(title) && !/\brookie\b/i.test(title)) {
     title += ' RC';
   }
-  if ((card.auto || /\bauto\b|\bautograph\b/i.test(nameSetStr)) && !/\bauto\b/i.test(title)) {
+  if (isAuto && !/\bauto\b/i.test(title) && !/\bautograph\b/i.test(title)) {
     title += ' Auto';
   }
   if (title.length > 80) {
     title = title.substring(0, 80).trim();
   }
 
-  // Category: sport-specific mapping, wrestling gets its own category
+  // Category mapping: wrestling, soccer, baseball, football, basketball, hockey
   const sportStr = String(card.sport || '').toLowerCase();
   const combinedText = `${card.name} ${card.set} ${sportStr}`.toLowerCase();
-  
   let category;
-  if (sportStr === 'wrestling' || /wwe|aew|wrestling|roh|njpw|tna/.test(combinedText)) {
+  if (sportStr === 'wrestling' || /wwe|aew|wrestling|roh|njpw|tna|impact\s*wrestling/.test(combinedText)) {
     category = 'Sports Mem, Cards & Fan Shop > Wrestling Cards';
-  } else if (sportStr === 'baseball' || /baseball|mlb/.test(combinedText)) {
+  } else if (sportStr === 'soccer' || /soccer|\bfc\b|fifa|uefa|premier\s*league|la\s*liga|serie\s*a|bundesliga|ligue\s*1|mls|champions\s*league|world\s*cup|psg|barcelona|real\s*madrid|liverpool|manchester|arsenal|chelsea|tottenham|juventus|bayern|dortmund/.test(combinedText)) {
+    category = 'Sports Mem, Cards & Fan Shop > Sports Trading Cards > Soccer > Trading Card Singles';
+  } else if (sportStr === 'baseball' || /baseball|mlb|\bbowman\b|\btopps\b|\bchrom\b|\brefractor\b/.test(combinedText)) {
     category = 'Sports Mem, Cards & Fan Shop > Sports Trading Cards > Baseball > Trading Card Singles';
-  } else if (sportStr === 'football' || /football|nfl/.test(combinedText)) {
+  } else if (sportStr === 'football' || /football|nfl|\bpanini\b|\bprizm\b|\bselect\b|\bcontenders\b|\bmosaic\b/.test(combinedText)) {
     category = 'Sports Mem, Cards & Fan Shop > Sports Trading Cards > Football > Trading Card Singles';
   } else if (sportStr === 'basketball' || /basketball|nba/.test(combinedText)) {
     category = 'Sports Mem, Cards & Fan Shop > Sports Trading Cards > Basketball > Trading Card Singles';
@@ -80,7 +89,7 @@ function buildRow(card, idx) {
     condition = 'Used';
   } else if (/^(psa|bgs|cgc|sgc)\s*10$/.test(gradeLower) || /gem\s*mint/.test(gradeLower)) {
     condition = 'Used - Mint';
-  } else if (/^(psa|bgs|cgc|sgc)\s*9$/.test(gradeLower) || /mint/.test(gradeLower)) {
+  } else if (/^(psa|bgs|cgc|sgc)\s*9$/.test(gradeLower) || /\bmint\b/.test(gradeLower)) {
     condition = 'Used - Excellent';
   } else if (/^(psa|bgs|cgc|sgc)\s*8$/.test(gradeLower) || /very\s*good/.test(gradeLower)) {
     condition = 'Used - Very Good';
