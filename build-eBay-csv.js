@@ -7,13 +7,17 @@ const HEADERS = ['Item Title','Start Price','Buy It Now','Category','Quantity','
 
 /**
  * Build a CSV row for a single card.
- * Evolved by darwinian-evolver (score: 1.000) against 11 eBay business scenarios:
- * - Title optimization (max 80 chars, name + set + grade)
- * - Category mapping (TCG vs sports cards)
- * - Condition mapping (PSA/BGS/CGC/SGC grade -> eBay condition)
- * - CSV escaping (quotes, commas, newlines)
- * - Rich description generation
- * - Missing field handling (grade defaults to "Raw")
+ * Evolved by darwinian-evolver v2 (score: 1.000) for SPORTS + WRESTLING cards.
+ * 
+ * Features:
+ * - Sport-specific eBay category mapping (baseball/football/basketball/hockey/wrestling)
+ * - Wrestling cards (WWE/AEW/ROH/NJPW/TNA) get dedicated wrestling category
+ * - Rookie card detection: appends 'RC' to title for eBay SEO
+ * - Autograph detection: appends 'Auto' to title for eBay SEO
+ * - Grade-based condition mapping (PSA/BGS/CGC/SGC)
+ * - CSV escaping for commas, quotes, newlines
+ * - Rich description with condition notes and shipping info
+ * - Missing grade defaults to 'Raw'
  */
 function buildRow(card, idx) {
   const errs = [];
@@ -29,8 +33,6 @@ function buildRow(card, idx) {
   const grade = (card.grade && String(card.grade).trim()) || 'Raw';
   const gradeLower = grade.toLowerCase().replace(/\s+/g, ' ').trim();
 
-  // CSV field escaping: quote fields containing commas, quotes, or newlines;
-  // double internal quotes.
   function csvField(val) {
     const str = String(val == null ? '' : val);
     if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
@@ -39,46 +41,64 @@ function buildRow(card, idx) {
     return str;
   }
 
-  // Title: name + set + grade, collapsed spaces, max 80 chars.
+  // Title: name + set + grade, with RC and Auto detection
   let title = `${card.name} ${card.set} ${grade}`.replace(/\s+/g, ' ').trim();
-  if (title.length > 80) title = title.substring(0, 80).trim();
+  const nameSetStr = `${card.name} ${card.set}`.toLowerCase();
+  if ((card.rc || /\brookie\b|\brc\b/i.test(nameSetStr)) && !/\brc\b/i.test(title)) {
+    title += ' RC';
+  }
+  if ((card.auto || /\bauto\b|\bautograph\b/i.test(nameSetStr)) && !/\bauto\b/i.test(title)) {
+    title += ' Auto';
+  }
+  if (title.length > 80) {
+    title = title.substring(0, 80).trim();
+  }
 
-  // Category: map by card type (TCG vs. sports).
-  // Check type field, then fall back to name/set keywords for TCG detection.
-  const cardType = String(card.type || card.category || card.game || '').toLowerCase();
-  const nameSet = `${card.name} ${card.set}`.toLowerCase();
-  const isTCG = /pokemon|pkmn|magic|mtg|yu-?gi-?oh|yugioh|tcg|ccg|flesh and blood|lorcana/.test(cardType)
-    || /pokemon|pikachu|charizard|blastoise|venusaur|magic: the gathering|mtg|black lotus|blue-?eyes|dark magician|exodia|lorcana/.test(nameSet);
-  const category = isTCG
-    ? 'Collectibles > Trading Card Games > Individual Cards'
-    : 'Sports Mem, Cards & Fan Shop > Sports Trading Cards > Trading Card Singles';
+  // Category: sport-specific mapping, wrestling gets its own category
+  const sportStr = String(card.sport || '').toLowerCase();
+  const combinedText = `${card.name} ${card.set} ${sportStr}`.toLowerCase();
+  
+  let category;
+  if (sportStr === 'wrestling' || /wwe|aew|wrestling|roh|njpw|tna/.test(combinedText)) {
+    category = 'Sports Mem, Cards & Fan Shop > Wrestling Cards';
+  } else if (sportStr === 'baseball' || /baseball|mlb/.test(combinedText)) {
+    category = 'Sports Mem, Cards & Fan Shop > Sports Trading Cards > Baseball > Trading Card Singles';
+  } else if (sportStr === 'football' || /football|nfl/.test(combinedText)) {
+    category = 'Sports Mem, Cards & Fan Shop > Sports Trading Cards > Football > Trading Card Singles';
+  } else if (sportStr === 'basketball' || /basketball|nba/.test(combinedText)) {
+    category = 'Sports Mem, Cards & Fan Shop > Sports Trading Cards > Basketball > Trading Card Singles';
+  } else if (sportStr === 'hockey' || /hockey|nhl/.test(combinedText)) {
+    category = 'Sports Mem, Cards & Fan Shop > Sports Trading Cards > Hockey > Trading Card Singles';
+  } else {
+    category = 'Sports Mem, Cards & Fan Shop > Sports Trading Cards > Trading Card Singles';
+  }
 
-  // Condition: map by grade.
+  // Condition: grade-based mapping
+  const isRaw = /raw|ungraded|not\s*graded/.test(gradeLower);
   let condition;
-  if (/^(psa|bgs|cgc|sgc)\s*10$/.test(gradeLower) || /gem\s*mint/.test(gradeLower)) {
+  if (isRaw) {
+    condition = 'Used';
+  } else if (/^(psa|bgs|cgc|sgc)\s*10$/.test(gradeLower) || /gem\s*mint/.test(gradeLower)) {
     condition = 'Used - Mint';
   } else if (/^(psa|bgs|cgc|sgc)\s*9$/.test(gradeLower) || /mint/.test(gradeLower)) {
     condition = 'Used - Excellent';
   } else if (/^(psa|bgs|cgc|sgc)\s*8$/.test(gradeLower) || /very\s*good/.test(gradeLower)) {
     condition = 'Used - Very Good';
   } else {
-    // Raw / ungraded / anything else.
     condition = 'Used';
   }
 
-  // Rich, informative description.
-  const isRaw = /raw|ungraded|not\s*graded/.test(gradeLower);
+  // Rich description
   const graderPrefix = grade.split(/\s+/)[0];
   const conditionNote = isRaw
-    ? `This card is ungraded and offered in raw condition, making it a great candidate for personal collection or professional grading submission. Please review the provided details and ask any questions before purchase.`
-    : `This card has been professionally graded as ${grade}${/^(PSA|BGS|CGC|SGC)$/i.test(graderPrefix) ? ` by ${graderPrefix}` : ''}, offering collectors a verified and encapsulated piece with strong long-term collectibility.`;
+    ? `This card is ungraded and offered in raw condition. Please review the provided details and ask any questions before purchase.`
+    : `This card has been professionally graded as ${grade}${/^(PSA|BGS|CGC|SGC)$/i.test(graderPrefix) ? ` by ${graderPrefix}` : ''}.`;
+
   const description = (
     `Up for sale is a ${grade} ${card.name} from the ${card.set} set. ` +
     `${conditionNote} ` +
-    `This is a sought-after collectible with enduring demand among enthusiasts and a solid addition to any serious collection. ` +
-    `The item pictured is the exact item you will receive (where applicable). ` +
-    `Shipping: securely packaged in a sleeve and toploader (or graded slab), with tracking provided to the United States. ` +
-    `International shipping available where supported. Payment expected within 3 days of listing close. ` +
+    `A great addition to any sports or wrestling card collection. ` +
+    `Shipping: securely packaged with tracking. ` +
     `Details — Card: ${card.name} | Set: ${card.set} | Grade: ${grade} | Quantity: ${card.quantity}.`
   );
 
