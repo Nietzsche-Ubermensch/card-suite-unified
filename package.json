@@ -1,0 +1,22 @@
+{
+  "name": "card-suite-unified",
+  "version": "1.0.0",
+  "description": "eBay Card Suite: measurement enforcement + batch AI enhancement + CSV pipeline",
+  "main": "build-eBay-csv.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nietzsche-Ubermensch/card-suite-unified.git"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Nietzsche-Ubermensch/card-suite-unified/issues"
+  },
+  "homepage": "https://github.com/Nietzsche-Ubermensch/card-suite-unified#readme",
+  "dependencies": {
+    "dotenv": "^17.4.2"
+  }
+}
