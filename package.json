@@ -1,22 +1,29 @@
 {
   "name": "card-suite-unified",
-  "version": "1.0.0",
-  "description": "eBay Card Suite: measurement enforcement + batch AI enhancement + CSV pipeline",
-  "main": "build-eBay-csv.js",
+  "version": "2.0.0",
+  "description": "eBay Card Suite: React frontend + Express API + evolved CSV builder for sports & wrestling cards",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js",
+    "dev:api": "node server.js",
+    "dev:ui": "cd frontend && npx vite --port 5999 --host",
+    "dev": "concurrently \"node server.js\" \"cd frontend && npx vite --port 5999 --host\"",
+    "pipeline": "node launcher.js"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Nietzsche-Ubermensch/card-suite-unified.git"
   },
-  "keywords": [],
+  "keywords": ["ebay", "csv", "sports-cards", "wrestling-cards", "react"],
   "type": "commonjs",
   "bugs": {
     "url": "https://github.com/Nietzsche-Ubermensch/card-suite-unified/issues"
   },
   "homepage": "https://github.com/Nietzsche-Ubermensch/card-suite-unified#readme",
   "dependencies": {
-    "dotenv": "^17.4.2"
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.2",
+    "image-size": "^2.0.2"
   }
 }

@@ -137,3 +137,5 @@ pids
 .docusaurus
 .svelte-kit/
 .vite/
+node_modules/
+frontend/node_modules/

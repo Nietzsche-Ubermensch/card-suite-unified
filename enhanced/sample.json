@@ -1,5 +1,18 @@
 [
-  {"name":"Mike Trout Rookie","set":"2011 Topps Update","grade":"PSA 10","price":5000,"quantity":1,"sport":"baseball"},
-  {"name":"Patrick Mahomes Rookie","set":"2017 Panini Contenders","grade":"PSA 9","price":1200,"quantity":1,"sport":"football"},
-  {"name":"John Cena Auto","set":"2022 Topps WWE Heritage","grade":"Raw","price":150,"quantity":1,"sport":"wrestling"}
+  {
+    "name": "Mike Trout Rookie",
+    "set": "2011 Topps Update",
+    "grade": "PSA 10",
+    "price": 5000,
+    "quantity": 1,
+    "sport": "baseball"
+  },
+  {
+    "name": "John Cena Auto",
+    "set": "2022 Topps WWE Heritage",
+    "grade": "Raw",
+    "price": 150,
+    "quantity": 1,
+    "sport": "wrestling"
+  }
 ]
