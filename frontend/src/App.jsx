@@ -111,7 +111,7 @@ export default function App() {
           <div style={styles.title}>Card Suite — Wrestling & Sports</div>
           <div style={{ fontSize: '13px', color: '#71717a', marginTop: '4px' }}>eBay CSV Builder for Wrestling (WWE/AEW) & Sports Cards</div>
         </div>
-        <div style={styles.badge}>Evolved v3 · Score 1.000</div>
+        <div style={styles.badge}>eBay Seller Hub · v4</div>
       </div>
 
       <div style={styles.tabs}>
