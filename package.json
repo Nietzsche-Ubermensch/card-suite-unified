@@ -8,13 +8,21 @@
     "dev:api": "node server.js",
     "dev:ui": "cd frontend && npx vite --port 5999 --host",
     "dev": "concurrently \"node server.js\" \"cd frontend && npx vite --port 5999 --host\"",
-    "pipeline": "node launcher.js"
+    "pipeline": "node launcher.js",
+    "evolve": "bash evolver/run.sh 5 ./evolver/results",
+    "evolve:quick": "bash evolver/run.sh 3 ./evolver/results"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Nietzsche-Ubermensch/card-suite-unified.git"
   },
-  "keywords": ["ebay", "csv", "sports-cards", "wrestling-cards", "react"],
+  "keywords": [
+    "ebay",
+    "csv",
+    "sports-cards",
+    "wrestling-cards",
+    "react"
+  ],
   "type": "commonjs",
   "bugs": {
     "url": "https://github.com/Nietzsche-Ubermensch/card-suite-unified/issues"
@@ -24,6 +32,8 @@
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^4.21.2",
-    "image-size": "^2.0.2"
+    "image-size": "^2.0.2",
+    "multer": "^2.2.0",
+    "sharp": "^0.35.3"
   }
 }
