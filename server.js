@@ -75,22 +75,6 @@ function saveDB(db) {
   fs.writeFileSync(CARDS_DB, JSON.stringify(db, null, 2));
 }
 
-function loadEnhancedCards() {
-  const db = loadDB();
-  if (db.cards.length > 0) return db;
-  try {
-    const files = fs.readdirSync(ENHANCED_DIR).filter(f => f.endsWith('.json'));
-    const all = [];
-    files.forEach(f => {
-      const data = JSON.parse(fs.readFileSync(path.join(ENHANCED_DIR, f), 'utf8'));
-      (Array.isArray(data) ? data : [data]).forEach(c => all.push(c));
-    });
-    return { cards: all, nextId: all.length + 1 };
-  } catch {
-    return { cards: [], nextId: 1 };
-  }
-}
-
 function syncCardsToFile(db) {
   fs.writeFileSync(path.join(ENHANCED_DIR, 'sample.json'), JSON.stringify(db.cards, null, 2));
 }
@@ -101,7 +85,7 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     uptime: process.uptime(),
-    cards: loadEnhancedCards().cards.length,
+    cards: loadDB().cards.length,
     timestamp: new Date().toISOString(),
     port: PORT,
     venice: !!getVeniceKey(),
@@ -109,7 +93,7 @@ app.get('/api/health', (req, res) => {
 });
 
 app.get('/api/cards', (req, res) => {
-  res.json({ cards: loadEnhancedCards().cards });
+  res.json({ cards: loadDB().cards });
 });
 
 app.post('/api/cards', (req, res) => {
@@ -431,22 +415,100 @@ app.post('/api/bulk-delete', (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.post('/api/import-inventory', (req, res) => {
+app.post('/api/import-inventory', async (req, res) => {
   try {
     const folder = req.body.folder || '/mnt/c/Users/peter/Desktop/rbeachgebay';
     if (!fs.existsSync(folder)) return res.status(404).json({ error: `Folder not found: ${folder}` });
     const files = fs.readdirSync(folder).filter(f => /\.(jpg|jpeg|png|webp)$/i.test(f));
     const db = loadDB();
+    const key = getVeniceKey();
+
+    // Count how many need importing
+    const toImport = files.filter(f => !db.cards.some(c => c.sourceImage === f));
+    const alreadyImported = files.length - toImport.length;
+
+    // Create stub entries immediately so cards show up in the UI
     let imported = 0;
-    files.forEach(f => {
-      const exists = db.cards.some(c => c.sourceImage === f);
-      if (exists) return;
-      const card = { id: db.nextId++, name: '', set: '', grade: 'Raw', price: 0, quantity: 1, sport: 'wrestling', sourceImage: f, imagePath: `${folder}/${f}`, importedAt: new Date().toISOString() };
+    for (const f of toImport) {
+      const imgPath = path.join(folder, f);
+      const card = {
+        id: db.nextId++,
+        name: '',
+        set: '',
+        grade: 'Raw',
+        price: 0,
+        quantity: 1,
+        sport: 'wrestling',
+        sourceImage: f,
+        imagePath: imgPath,
+        importedAt: new Date().toISOString(),
+        aiStatus: 'pending',
+      };
       db.cards.push(card);
       imported++;
-    });
+    }
     saveDB(db); syncCardsToFile(db);
-    res.json({ imported, totalImages: files.length, totalCards: db.cards.length });
+
+    // Respond immediately — client can poll /api/cards for updates
+    res.json({ imported, totalImages: files.length, totalCards: db.cards.length, alreadyImported, message: 'Importing. AI extraction running in background.' });
+
+    // Process Venice vision extraction in background, saving after each batch
+    if (key && toImport.length > 0) {
+      const BATCH_SIZE = 5;
+      let extracted = 0;
+      for (let i = 0; i < toImport.length; i += BATCH_SIZE) {
+        const batch = toImport.slice(i, i + BATCH_SIZE);
+        // Process batch in parallel
+        await Promise.all(batch.map(async (f) => {
+          const imgPath = path.join(folder, f);
+          try {
+            const imgBuffer = fs.readFileSync(imgPath);
+            const imgBase64 = imgBuffer.toString('base64');
+            const ext = path.extname(f).toLowerCase();
+            const mime = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+
+            const visionResp = await fetch(`${VENICE_BASE}/chat/completions`, {
+              method: 'POST',
+              headers: veniceHeaders(),
+              body: JSON.stringify({
+                model: 'qwen3-vl-235b-a22b',
+                messages: [{
+                  role: 'user',
+                  content: [
+                    { type: 'text', text: 'Identify this trading card. Return JSON only: {"name":"player name or card name","set":"card set/brand","sport":"baseball|football|basketball|hockey|wrestling|soccer","grade":"Raw|PSA 9|PSA 10|BGS 9.5|BGS 10|SGC 10|CGC 9.5|CGC 10"}. If you cannot read the card, use empty strings.' },
+                    { type: 'image_url', image_url: { url: `data:${mime};base64,${imgBase64}` } },
+                  ],
+                }],
+                max_tokens: 200,
+                temperature: 0.1,
+              }),
+            });
+
+            if (visionResp.ok) {
+              const vData = await visionResp.json();
+              const vContent = vData.choices?.[0]?.message?.content || '{}';
+              try {
+                const m = vContent.match(/\{[\s\S]*\}/);
+                const extracted_data = JSON.parse(m ? m[0] : vContent);
+                const currentDb = loadDB();
+                const cardIdx = currentDb.cards.findIndex(c => c.sourceImage === f);
+                if (cardIdx !== -1) {
+                  currentDb.cards[cardIdx].name = extracted_data.name || '';
+                  currentDb.cards[cardIdx].set = extracted_data.set || '';
+                  currentDb.cards[cardIdx].sport = extracted_data.sport || 'wrestling';
+                  currentDb.cards[cardIdx].grade = extracted_data.grade || 'Raw';
+                  currentDb.cards[cardIdx].aiStatus = 'extracted';
+                  saveDB(currentDb); syncCardsToFile(currentDb);
+                  if (extracted_data.name) extracted++;
+                }
+              } catch { /* parse failed */ }
+            }
+          } catch { /* image read failed */ }
+        }));
+        console.log(`[import] Processed ${Math.min(i + BATCH_SIZE, toImport.length)}/${toImport.length} images, ${extracted} extracted so far`);
+      }
+      console.log(`[import] Done. Extracted ${extracted}/${toImport.length} card names via Venice vision.`);
+    }
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -533,7 +595,7 @@ app.post('/api/ai/analyze', async (req, res) => {
   try {
     const { image, model } = req.body;
     if (!image) return res.status(400).json({ error: 'image (base64 or URL) required' });
-    const analysisModel = model || 'llama-3.2-90b-vision';
+    const analysisModel = model || 'qwen3-vl-235b-a22b';
     const prompt = `Analyze this trading card scan. Identify:
 1. Material type (cardboard, chrome, refractor)
 2. Orientation (horizontal, vertical)
@@ -604,7 +666,7 @@ app.post('/api/ai/scan-cleanup', async (req, res) => {
       method: 'POST',
       headers: veniceHeaders(),
       body: JSON.stringify({
-        model: model || 'llama-3.2-90b-vision',
+        model: model || 'qwen3-vl-235b-a22b',
         messages: [{
           role: 'user',
           content: [
