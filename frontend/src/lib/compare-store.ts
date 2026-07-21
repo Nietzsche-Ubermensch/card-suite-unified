@@ -67,19 +67,53 @@ export function clearCompareList(): void {
   saveItems([]);
 }
 
-export function downloadAllAsZip(items: CompareItem[]): void {
-  items.forEach((item, i) => {
-    const link = document.createElement('a');
-    link.href = item.cleaned;
-    link.download = item.filename.replace(/\.[^/.]+$/, '_clean.png');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    // Stagger downloads to avoid browser blocking
-    if (i < items.length - 1) {
-      setTimeout(() => {}, 200);
+export async function downloadAllAsZip(items: CompareItem[]): Promise<void> {
+  if (items.length === 0) return;
+
+  const JSZip = (await import('jszip')).default;
+  const zip = new JSZip();
+
+  for (const item of items) {
+    const baseName = item.filename.replace(/\.[^/.]+$/, '');
+    // Try to fetch the cleaned image and add to zip
+    try {
+      const response = await fetch(item.cleaned);
+      const blob = await response.blob();
+      zip.file(`${baseName}_clean.png`, blob);
+    } catch {
+      // If fetch fails (data URL), add the original directly
+      if (item.cleaned.startsWith('data:')) {
+        const base64 = item.cleaned.split(',')[1];
+        zip.file(`${baseName}_clean.png`, base64, { base64: true });
+      }
     }
+    // Also add original
+    try {
+      const response = await fetch(item.original);
+      const blob = await response.blob();
+      zip.file(item.filename, blob);
+    } catch {
+      if (item.original.startsWith('data:')) {
+        const base64 = item.original.split(',')[1];
+        zip.file(item.filename, base64, { base64: true });
+      }
+    }
+  }
+
+  const blob = await zip.generateAsync({
+    type: 'blob',
+    compression: 'DEFLATE',
+    compressionOptions: { level: 6 },
   });
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `compare_results_${new Date().toISOString().split('T')[0]}.zip`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // Subscribe pattern for cross-component updates

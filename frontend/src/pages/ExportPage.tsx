@@ -14,6 +14,7 @@ import {
   Trash2,
   X,
   History,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -27,6 +28,7 @@ import {
 } from '@/lib/zip-export';
 import type { ExportOptions } from '@/lib/zip-export';
 import type { BatchItem } from '@/types';
+import { API_ENDPOINTS, apiGet, apiPost } from '@/lib/api-client';
 
 // --- Export History (localStorage) ---
 
@@ -83,7 +85,7 @@ function Checkbox({
   );
 }
 
-// --- Radio component ---
+// --- Radio component (unused — removed) ---
 
 function Radio({
   checked,
@@ -167,42 +169,86 @@ function TreeNode({ name, type, children, size, defaultOpen = true, level = 0 }:
   );
 }
 
-// --- Mock items for demo (in real app these come from batch queue state) ---
+// --- Real batch items from API + localStorage ---
 
-function useMockBatchItems(): BatchItem[] {
-  const [mockItems, setMockItems] = useState<BatchItem[]>([]);
+function useBatchItems(): { items: BatchItem[]; isLoading: boolean; csvGenerated: boolean; generateCsv: () => Promise<void> } {
+  const [items, setItems] = useState<BatchItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [csvGenerated, setCsvGenerated] = useState(false);
 
   useEffect(() => {
-    // Check if we have stored batch items from the cleanup page
-    // In a real app this would come from shared state (context/zustand)
-    // For now we show an empty state encouraging user to process cards first
-    setMockItems([]);
+    let cancelled = false;
+    (async () => {
+      // First check localStorage for batch cleanup items
+      try {
+        const raw = localStorage.getItem('card-suite-batch-items');
+        if (raw) {
+          const parsed = JSON.parse(raw) as Array<Partial<BatchItem>>;
+          const completed = parsed.filter((i) => i.state === 'complete') as BatchItem[];
+          if (completed.length > 0 && !cancelled) {
+            setItems(completed);
+            setIsLoading(false);
+            return;
+          }
+        }
+      } catch {
+        // ignore
+      }
+
+      // Then fetch real cards from the API
+      try {
+        const data = await apiGet<{ cards: Array<{ id: number; name: string; set: string; grade: string; price: number; enhancedTitle?: string; enhancedDescription?: string; images?: string[]; sourceImage?: string }> }>(API_ENDPOINTS.cards);
+        if (!cancelled && data.cards) {
+          const cardItems: BatchItem[] = data.cards.map((card) => ({
+            id: String(card.id),
+            file: new File([], card.sourceImage || `${card.name}.jpg`),
+            previewUrl: card.images?.[0] || null,
+            cleanedUrl: card.images?.[0] || null,
+            filename: card.sourceImage || `${card.name || 'card'}_${card.id}.jpg`,
+            side: 'front' as const,
+            material: 'unknown' as const,
+            orientation: 'unknown' as const,
+            state: 'complete' as const,
+            progress: 100,
+            error: null,
+            analysis: null,
+            strength: 0.5,
+          }));
+          setItems(cardItems);
+        }
+      } catch (err) {
+        console.error('Failed to fetch cards:', err);
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
 
-  return mockItems;
+  const generateCsv = useCallback(async () => {
+    try {
+      const result = await apiPost<{ written: number; skipped: number; csv: string }>(API_ENDPOINTS.generateCsv, {});
+      if (result.written > 0) {
+        setCsvGenerated(true);
+        toast.success(`CSV generated — ${result.written} cards written`);
+        // Trigger download
+        const blob = new Blob([result.csv], { type: 'text/csv' });
+        downloadBlob(blob, 'eBay_bulk_upload.csv');
+      } else {
+        toast.warning(`CSV generated but 0 cards written (${result.skipped} skipped)`);
+      }
+    } catch (err) {
+      toast.error(`CSV generation failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }, []);
+
+  return { items, isLoading, csvGenerated, generateCsv };
 }
 
 // --- Main Export Page ---
 
 export default function ExportPage() {
-  const mockItems = useMockBatchItems();
-
-  // In a real implementation, items would come from global state.
-  // For now, we track items locally and provide a way to add test data.
-  const [items] = useState<BatchItem[]>(() => {
-    // Try to load from localStorage (synced by batch cleanup)
-    try {
-      const raw = localStorage.getItem('card-suite-batch-items');
-      if (raw) {
-        const parsed = JSON.parse(raw) as Array<Partial<BatchItem>>;
-        // Note: we can't serialize File objects, so this is a best-effort restore
-        return parsed.filter((i) => i.state === 'complete') as BatchItem[];
-      }
-    } catch {
-      // ignore
-    }
-    return mockItems;
-  });
+  const { items, isLoading, csvGenerated, generateCsv } = useBatchItems();
 
   const [options, setOptions] = useState<ExportOptions>({
     ...defaultExportOptions,
@@ -392,16 +438,31 @@ export default function ExportPage() {
         </div>
       </div>
 
+      {/* Loading state */}
+      {isLoading && !isExporting && !exportComplete && (
+        <div className="flex-1 flex flex-col items-center justify-center text-center">
+          <Loader2 className="size-8 text-status-info animate-spin mb-4" strokeWidth={1.5} />
+          <p className="text-sm text-text-secondary">Loading your cards...</p>
+        </div>
+      )}
+
       {/* No items state */}
-      {!hasItems && !isExporting && !exportComplete && (
+      {!hasItems && !isLoading && !isExporting && !exportComplete && (
         <div className="flex-1 flex flex-col items-center justify-center text-center">
           <div className="size-16 rounded-lg bg-app-panel border border-border-subtle flex items-center justify-center mb-4">
             <Inbox className="size-8 text-text-tertiary" strokeWidth={1.5} />
           </div>
-          <p className="text-sm text-text-secondary mb-1">No completed cards to export</p>
-          <p className="text-xs text-text-tertiary">
-            Process cards in Batch Cleanup first, then export them here.
+          <p className="text-sm text-text-secondary mb-1">No cards to export</p>
+          <p className="text-xs text-text-tertiary mb-4">
+            Add cards via the inventory import or process scans in Batch Cleanup first.
           </p>
+          <button
+            onClick={generateCsv}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-medium bg-status-info text-white hover:brightness-110 transition-all"
+          >
+            <Download className="size-4" strokeWidth={1.5} />
+            Generate CSV from Inventory
+          </button>
         </div>
       )}
 
@@ -417,12 +478,54 @@ export default function ExportPage() {
                 Export Format
               </p>
               <div className="flex flex-wrap gap-4">
-                <Radio
-                  checked={true}
-                  onChange={() => {}}
-                  label="Keep original format"
+                <Checkbox
+                  checked={options.includeOriginal}
+                  onChange={(v) => updateOption('includeOriginal', v)}
+                  label="Original scans"
+                />
+                <Checkbox
+                  checked={options.includeCleaned}
+                  onChange={(v) => updateOption('includeCleaned', v)}
+                  label="Cleaned scans"
+                />
+                <Checkbox
+                  checked={options.includeAnalysis}
+                  onChange={(v) => updateOption('includeAnalysis', v)}
+                  label="Analysis data (JSON)"
                 />
               </div>
+            </div>
+
+            {/* CSV Export */}
+            <div className="mb-4 pt-4 border-t border-border-subtle">
+              <p className="text-xs uppercase tracking-wider text-text-tertiary font-semibold mb-2">
+                eBay Bulk Upload CSV
+              </p>
+              <button
+                onClick={generateCsv}
+                disabled={csvGenerated}
+                className={cn(
+                  'inline-flex items-center gap-2 px-4 py-2 rounded-sm text-sm font-medium transition-all',
+                  csvGenerated
+                    ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                    : 'bg-status-info text-white hover:brightness-110',
+                )}
+              >
+                {csvGenerated ? (
+                  <>
+                    <Check className="size-4" strokeWidth={1.5} />
+                    CSV Generated — Download Again
+                  </>
+                ) : (
+                  <>
+                    <Download className="size-4" strokeWidth={1.5} />
+                    Generate eBay CSV
+                  </>
+                )}
+              </button>
+              <p className="text-xs text-text-tertiary mt-2">
+                Generates a bulk upload CSV file with eBay-compatible headers for all {items.length} cards.
+              </p>
             </div>
 
             {/* Include */}

@@ -181,25 +181,13 @@ export default function ScanCleanup() {
       const imageBase64 = await fileToBase64(file);
       const model = selected.analysis || 'default';
 
-      const response = await fetch(API_ENDPOINTS.scanCleanup, {
+      const response = await fetch(API_ENDPOINTS.analyze, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({
-          mode: 'analyze',
+          image: imageBase64,
           model,
-          imageBase64,
           filename: file.name,
-          fields: [
-            'artifactTypes',
-            'artifactLocations',
-            'colorCast',
-            'lightingIssues',
-            'cardConditionIntact',
-            'recommendedApproach',
-            'confidence',
-            'material',
-            'orientation',
-          ],
         }),
       });
 
@@ -262,9 +250,8 @@ export default function ScanCleanup() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({
-          mode: 'cleanup',
+          image: imageBase64,
           model,
-          imageBase64,
           filename: file.name,
           strength,
           material,

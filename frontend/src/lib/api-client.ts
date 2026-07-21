@@ -8,6 +8,9 @@ export const API_ENDPOINTS = {
   restore: '/api/ai/restore',
   scanCleanup: '/api/ai/scan-cleanup',
   generateImage: '/api/images/generate',
+  cards: '/api/cards',
+  enhance: '/api/enhance',
+  generateCsv: '/api/generate-csv',
 } as const;
 
 export interface ApiError {

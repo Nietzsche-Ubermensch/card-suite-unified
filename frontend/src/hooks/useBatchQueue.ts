@@ -8,6 +8,19 @@ const MAX_CARDS = 50;
 const DEFAULT_CONCURRENCY = 3;
 const DEFAULT_REQUEST_RESERVE = 5;
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = result.includes(',') ? result.split(',')[1] : result;
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
 interface UseBatchQueueOptions {
   maxConcurrency?: number;
   requestReserve?: number;
@@ -183,12 +196,12 @@ export function useBatchQueue(options: UseBatchQueueOptions = {}): UseBatchQueue
         // Step 1: Analyze
         updateItem(item.id, { state: 'analyzing', progress: 10 });
 
-        const formData = new FormData();
-        formData.append('file', item.file);
+        const imageBase64 = await fileToBase64(item.file);
 
         const analyzeResponse = await fetch(API_ENDPOINTS.analyze, {
           method: 'POST',
-          body: formData,
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ image: imageBase64, filename: item.filename }),
           signal: controller.signal,
         });
 
@@ -223,16 +236,14 @@ export function useBatchQueue(options: UseBatchQueueOptions = {}): UseBatchQueue
         // Step 2: Cleanup
         updateItem(item.id, { state: 'cleaning', progress: 50 });
 
-        const cleanupFormData = new FormData();
-        cleanupFormData.append('file', item.file);
-        cleanupFormData.append('strength', String(item.strength));
-        if (analysis.recommendedApproach) {
-          cleanupFormData.append('approach', analysis.recommendedApproach);
-        }
-
         const cleanupResponse = await fetch(API_ENDPOINTS.scanCleanup, {
           method: 'POST',
-          body: cleanupFormData,
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({
+            image: imageBase64,
+            strength: item.strength,
+            filename: item.filename,
+          }),
           signal: controller.signal,
         });
 
@@ -246,7 +257,11 @@ export function useBatchQueue(options: UseBatchQueueOptions = {}): UseBatchQueue
           throw new Error(cleanupResult.error);
         }
 
-        const cleanedUrl = cleanupResult.imageUrl || cleanupResult.url || null;
+        const cleanedUrl = cleanupResult.cleanedImage
+          ? cleanupResult.cleanedImage.startsWith('data:')
+            ? cleanupResult.cleanedImage
+            : `data:image/png;base64,${cleanupResult.cleanedImage}`
+          : null;
 
         updateItem(item.id, {
           state: 'complete',
