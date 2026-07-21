@@ -1,16 +1,18 @@
 {
   "name": "card-suite-unified",
-  "version": "2.0.0",
-  "description": "eBay Card Suite: React frontend + Express API + evolved CSV builder for sports & wrestling cards",
+  "version": "3.0.0",
+  "description": "eBay Card Suite: React+TS+Tailwind frontend + Venice AI backend + evolved CSV builder for sports & wrestling cards",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev:api": "node server.js",
     "dev:ui": "cd frontend && npx vite --port 5999 --host",
     "dev": "concurrently \"node server.js\" \"cd frontend && npx vite --port 5999 --host\"",
+    "build": "cd frontend && npx vite build",
     "pipeline": "node launcher.js",
     "evolve": "bash evolver/run.sh 5 ./evolver/results",
-    "evolve:quick": "bash evolver/run.sh 3 ./evolver/results"
+    "evolve:quick": "bash evolver/run.sh 3 ./evolver/results",
+    "test": "node test-api.js"
   },
   "repository": {
     "type": "git",
@@ -21,7 +23,10 @@
     "csv",
     "sports-cards",
     "wrestling-cards",
-    "react"
+    "react",
+    "venice-ai",
+    "tailwind",
+    "shadcn"
   ],
   "type": "commonjs",
   "bugs": {
