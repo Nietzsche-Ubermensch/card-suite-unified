@@ -122,7 +122,7 @@ function buildRow(card, idx) {
   const errs = [];
   if (!card.name) errs.push('name');
   if (!card.set) errs.push('set');
-  if (typeof card.price !== 'number' || card.price <= 0) errs.push('price');
+  if (typeof card.price !== 'number' || card.price < 0) errs.push('price');
   if (!card.quantity || card.quantity < 1) errs.push('quantity');
   if (errs.length) {
     console.warn(`[ROW ${idx}] Skipped: missing ${errs.join(', ')}`);

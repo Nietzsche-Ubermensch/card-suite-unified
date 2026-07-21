@@ -146,23 +146,19 @@ app.post('/api/preview', (req, res) => {
 
 app.post('/api/generate-csv', (req, res) => {
   try {
-    const cards = req.body.cards;
-    if (Array.isArray(cards) && cards.length > 0) {
-      fs.writeFileSync(path.join(ENHANCED_DIR, 'sample.json'), JSON.stringify(cards, null, 2));
-    }
-    const files = fs.readdirSync(ENHANCED_DIR).filter(f => f.endsWith('.json'));
+    // Read from the live cards database, not from enhanced/ directory
+    const db = loadDB();
+    const cards = (Array.isArray(req.body.cards) && req.body.cards.length > 0) ? req.body.cards : db.cards;
     const lines = [HEADERS.map(h => `"${h}"`).join(',')];
     let written = 0, skipped = 0;
-    files.forEach((f, i) => {
-      const data = JSON.parse(fs.readFileSync(path.join(ENHANCED_DIR, f), 'utf8'));
-      (Array.isArray(data) ? data : [data]).forEach((c, j) => {
-        const row = buildRow(c, `${i}-${j}`);
-        if (row) { lines.push(row); written++; } else skipped++;
-      });
+    cards.forEach((c, j) => {
+      const row = buildRow(c, `0-${j}`);
+      if (row) { lines.push(row); written++; } else skipped++;
     });
     const csv = lines.join('\n');
     const csvPath = path.join(LISTINGS_DIR, 'eBay_bulk_upload.csv');
     fs.writeFileSync(csvPath, csv);
+    syncCardsToFile(db);
     res.json({ csv, written, skipped, path: csvPath });
   } catch (e) {
     res.status(500).json({ error: e.message });
