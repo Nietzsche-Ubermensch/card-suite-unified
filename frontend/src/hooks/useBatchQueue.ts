@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { API_ENDPOINTS } from '@/lib/api-client';
+import { fileToBase64 } from '@/lib/file-utils';
 import { useVeniceStatus } from '@/hooks/useVeniceStatus';
 import { toast } from 'sonner';
 import type { BatchItem, BatchItemState, ScanAnalysisResult } from '@/types';
@@ -7,19 +8,6 @@ import type { BatchItem, BatchItemState, ScanAnalysisResult } from '@/types';
 const MAX_CARDS = 50;
 const DEFAULT_CONCURRENCY = 3;
 const DEFAULT_REQUEST_RESERVE = 5;
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      const base64 = result.includes(',') ? result.split(',')[1] : result;
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
 
 interface UseBatchQueueOptions {
   maxConcurrency?: number;

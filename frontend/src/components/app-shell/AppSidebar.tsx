@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, memo } from 'react';
 import {
   Scan,
   Layers,
@@ -57,7 +57,7 @@ function getConnectionDot(ok?: boolean) {
   return ok ? 'bg-status-success' : 'bg-status-error';
 }
 
-export default function AppSidebar({
+export default memo(function AppSidebar({
   currentView,
   assistantOpen,
   onViewChange,
@@ -190,4 +190,4 @@ export default function AppSidebar({
       </div>
     </aside>
   );
-}
+});

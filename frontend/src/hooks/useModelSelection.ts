@@ -54,9 +54,10 @@ export function useModelSelection() {
 
       if (changed) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        return next;
       }
-
-      return next;
+      // Return current reference — React bails out of re-render when value is identical
+      return current;
     });
   }, [models, categorized]);
 

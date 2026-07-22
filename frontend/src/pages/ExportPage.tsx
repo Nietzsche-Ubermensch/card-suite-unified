@@ -87,28 +87,6 @@ function Checkbox({
 
 // --- Radio component (unused — removed) ---
 
-function Radio({
-  checked,
-  onChange,
-  label,
-}: {
-  checked: boolean;
-  onChange: () => void;
-  label: string;
-}) {
-  return (
-    <label className="inline-flex items-center gap-2 cursor-pointer select-none">
-      <input
-        type="radio"
-        checked={checked}
-        onChange={onChange}
-        className="size-4 border-border-medium text-status-info focus:ring-status-info focus:ring-offset-0"
-      />
-      <span className="text-sm text-text-secondary">{label}</span>
-    </label>
-  );
-}
-
 // --- Folder Tree Component ---
 
 interface TreeNodeProps {
@@ -202,8 +180,8 @@ function useBatchItems(): { items: BatchItem[]; isLoading: boolean; csvGenerated
           const cardItems: BatchItem[] = data.cards.map((card) => ({
             id: String(card.id),
             file: new File([], card.sourceImage || `${card.name}.jpg`),
-            previewUrl: card.images?.[0] || null,
-            cleanedUrl: card.images?.[0] || null,
+            previewUrl: card.images?.[0] ?? '',
+            cleanedUrl: card.images?.[0] ?? null,
             filename: card.sourceImage || `${card.name || 'card'}_${card.id}.jpg`,
             side: 'front' as const,
             material: 'unknown' as const,

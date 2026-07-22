@@ -18,6 +18,7 @@ import {
   ArrowLeftRight,
 } from 'lucide-react';
 import { readVeniceStatusFromHeaders, API_ENDPOINTS } from '@/lib/api-client';
+import { fileToBase64 } from '@/lib/file-utils';
 import { useModelSelection } from '@/hooks/useModelSelection';
 import { addCompareItem, notifyCompareListChanged } from '@/lib/compare-store';
 import { Slider } from '@/components/ui/slider';
@@ -36,51 +37,47 @@ import type {
 import ScanDropzone from '@/components/cleanup/ScanDropzone';
 import BeforeAfterReview from '@/components/cleanup/BeforeAfterReview';
 
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Strip data URI prefix if present
-      const base64 = result.includes(',') ? result.split(',')[1] : result;
-      resolve(base64);
-    };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
+// Hoisted icon maps — stable references, not rebuilt per render
+const MATERIAL_ICONS: Record<MaterialType, React.ReactElement> = {
+  cardboard: <RectangleVertical className="size-3" strokeWidth={1.5} />,
+  chrome: <Sparkles className="size-3" strokeWidth={1.5} />,
+  refractor: <Zap className="size-3" strokeWidth={1.5} />,
+  unknown: <HelpCircle className="size-3" strokeWidth={1.5} />,
+};
+
+const ORIENTATION_ICONS: Record<Orientation, React.ReactElement> = {
+  horizontal: <RectangleHorizontal className="size-3" strokeWidth={1.5} />,
+  vertical: <RectangleVertical className="size-3" strokeWidth={1.5} />,
+  unknown: <HelpCircle className="size-3" strokeWidth={1.5} />,
+};
+
+const MATERIAL_LABELS: Record<MaterialType, string> = {
+  cardboard: 'Cardboard',
+  chrome: 'Chrome',
+  refractor: 'Refractor',
+  unknown: 'Unknown',
+};
+
+const ORIENTATION_LABELS: Record<Orientation, string> = {
+  horizontal: 'Horizontal',
+  vertical: 'Vertical',
+  unknown: 'Unknown',
+};
 
 function getMaterialIcon(material: MaterialType) {
-  switch (material) {
-    case 'cardboard':
-      return <RectangleVertical className="size-3" strokeWidth={1.5} />;
-    case 'chrome':
-      return <Sparkles className="size-3" strokeWidth={1.5} />;
-    case 'refractor':
-      return <Zap className="size-3" strokeWidth={1.5} />;
-    default:
-      return <HelpCircle className="size-3" strokeWidth={1.5} />;
-  }
+  return MATERIAL_ICONS[material] ?? MATERIAL_ICONS.unknown;
 }
 
 function getMaterialLabel(material: MaterialType) {
-  return material.charAt(0).toUpperCase() + material.slice(1);
+  return MATERIAL_LABELS[material] ?? MATERIAL_LABELS.unknown;
 }
 
 function getOrientationIcon(orientation: Orientation) {
-  if (orientation === 'horizontal') {
-    return <RectangleHorizontal className="size-3" strokeWidth={1.5} />;
-  }
-  if (orientation === 'vertical') {
-    return <RectangleVertical className="size-3" strokeWidth={1.5} />;
-  }
-  return <HelpCircle className="size-3" strokeWidth={1.5} />;
+  return ORIENTATION_ICONS[orientation] ?? ORIENTATION_ICONS.unknown;
 }
 
 function getOrientationLabel(orientation: Orientation) {
-  if (orientation === 'horizontal') return 'Horizontal';
-  if (orientation === 'vertical') return 'Vertical';
-  return 'Unknown';
+  return ORIENTATION_LABELS[orientation] ?? ORIENTATION_LABELS.unknown;
 }
 
 interface LogEntry {

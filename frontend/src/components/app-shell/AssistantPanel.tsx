@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, memo } from 'react';
 import {
   MessageSquare,
   Trash2,
@@ -28,7 +28,7 @@ function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
-export default function AssistantPanel({ open, onClose, selectedModel }: AssistantPanelProps) {
+export default memo(function AssistantPanel({ open, onClose, selectedModel }: AssistantPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -355,4 +355,4 @@ export default function AssistantPanel({ open, onClose, selectedModel }: Assista
       </div>
     </aside>
   );
-}
+});

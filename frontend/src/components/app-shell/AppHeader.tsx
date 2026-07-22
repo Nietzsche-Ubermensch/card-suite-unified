@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { Menu, Scan, Layers, Columns3, Download, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WorkspaceView } from '@/types';
@@ -23,7 +24,7 @@ interface AppHeaderProps {
   className?: string;
 }
 
-export default function AppHeader({ currentView, onMenuClick, onSettingsClick, className }: AppHeaderProps) {
+export default memo(function AppHeader({ currentView, onMenuClick, onSettingsClick, className }: AppHeaderProps) {
   const viewInfo = VIEW_TITLES[currentView];
   const ViewIcon = VIEW_ICONS[currentView];
 
@@ -64,4 +65,4 @@ export default function AppHeader({ currentView, onMenuClick, onSettingsClick, c
       </div>
     </header>
   );
-}
+});

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, lazy, Suspense } from 'react';
 import { useVeniceStatus } from '@/hooks/useVeniceStatus';
 import { useModelSelection } from '@/hooks/useModelSelection';
 import AppSidebar from '@/components/app-shell/AppSidebar';
@@ -13,13 +13,22 @@ import { Menu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WorkspaceView } from '@/types';
 
-// Pages
+// Pages — eager (needed on first paint)
 import ScanCleanup from '@/pages/ScanCleanup';
 import BatchCleanup from '@/pages/BatchCleanup';
 import CompareResults from '@/pages/CompareResults';
-import ExportPage from '@/pages/ExportPage';
-import ModelCatalog from '@/pages/ModelCatalog';
+// Pages — lazy (heavy deps: recharts, TanStack Table, JSZip)
+const ModelCatalog = lazy(() => import('@/pages/ModelCatalog'));
+const ExportPage = lazy(() => import('@/pages/ExportPage'));
 import SettingsDialog from '@/components/settings/SettingsDialog';
+
+function PageSkeleton() {
+  return (
+    <div className="h-full flex items-center justify-center">
+      <div className="size-8 rounded-full border-2 border-slate-700 border-t-slate-400 animate-spin" />
+    </div>
+  );
+}
 
 type AppView = WorkspaceView | 'assistant' | 'model-catalog' | 'api-status' | 'settings';
 
@@ -52,6 +61,18 @@ export default function App() {
     setAssistantOpen((prev) => !prev);
   }, []);
 
+  const handleMenuClick = useCallback(() => {
+    setMobileSidebarOpen(true);
+  }, []);
+
+  const handleSettingsClick = useCallback(() => {
+    setSettingsOpen(true);
+  }, []);
+
+  const handleAssistantClose = useCallback(() => {
+    setAssistantOpen(false);
+  }, []);
+
   const renderWorkspace = () => {
     switch (workspaceView) {
       case 'scan-cleanup':
@@ -60,8 +81,6 @@ export default function App() {
         return <BatchCleanup />;
       case 'compare':
         return <CompareResults />;
-      case 'export':
-        return <ExportPage />;
       default:
         return <ScanCleanup />;
     }
@@ -112,13 +131,19 @@ export default function App() {
       <main className="flex-1 flex flex-col min-w-0">
         <AppHeader
           currentView={workspaceView}
-          onMenuClick={() => setMobileSidebarOpen(true)}
-          onSettingsClick={() => setSettingsOpen(true)}
+          onMenuClick={handleMenuClick}
+          onSettingsClick={handleSettingsClick}
           className="lg:pl-0 pl-12"
         />
         <div className="flex-1 overflow-auto">
           {currentView === 'model-catalog' ? (
-            <ModelCatalog />
+            <Suspense fallback={<PageSkeleton />}>
+              <ModelCatalog />
+            </Suspense>
+          ) : currentView === 'export' ? (
+            <Suspense fallback={<PageSkeleton />}>
+              <ExportPage />
+            </Suspense>
           ) : renderWorkspace()}
         </div>
       </main>
@@ -135,7 +160,7 @@ export default function App() {
       >
         <AssistantPanel
           open={assistantOpen}
-          onClose={() => setAssistantOpen(false)}
+          onClose={handleAssistantClose}
           selectedModel={selected.chat || undefined}
         />
       </div>
