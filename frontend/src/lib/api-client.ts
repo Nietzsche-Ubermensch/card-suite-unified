@@ -11,6 +11,14 @@ export const API_ENDPOINTS = {
   cards: '/api/cards',
   enhance: '/api/enhance',
   generateCsv: '/api/generate-csv',
+  // Job pipeline endpoints
+  jobsSubmit: '/api/jobs/submit',
+  jobStatus: (id: string) => `/api/jobs/${id}/status`,
+  jobResult: (id: string) => `/api/jobs/${id}/result`,
+  jobsList: '/api/jobs',
+  // Config/preset endpoints
+  configPresets: '/api/config/presets',
+  configParams: '/api/config/params',
 } as const;
 
 export interface ApiError {

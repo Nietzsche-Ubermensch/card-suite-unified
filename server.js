@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const sharp = require('sharp');
+const { WebSocketServer } = require('ws');
 const { buildRow, HEADERS } = require('./build-eBay-csv');
 const { Readable } = require('stream');
 
@@ -81,7 +82,105 @@ function syncCardsToFile(db) {
 
 // ─── Health & Cards CRUD ───
 
-app.get('/api/health', (req, res) => {
+// ─── In-memory job queue ─────────────────────────────────────────────────────
+
+const jobRegistry = new Map(); // id → { id, status, priority, submittedAt, ... }
+
+function createJobEntry(id, filenames, priority = 'normal') {
+  return {
+    id,
+    status: 'pending',
+    priority,
+    filenames,
+    submittedAt: Date.now(),
+    startedAt: null,
+    completedAt: null,
+    progress: 0,
+    error: null,
+    resultPaths: [],
+  };
+}
+
+// POST /api/jobs/submit
+app.post('/api/jobs/submit', upload.array('images', 24), (req, res) => {
+  const id = crypto.randomUUID ? crypto.randomUUID() : `job_${Date.now()}`;
+  const priority = req.body.priority || 'normal';
+  const filenames = (req.files || []).map((f) => f.filename);
+  if (filenames.length === 0) return res.status(400).json({ error: 'No images provided' });
+
+  const job = createJobEntry(id, filenames, priority);
+  jobRegistry.set(id, job);
+
+  // Broadcast new job event via WebSocket
+  const broadcast = req.app.locals.wsBroadcast;
+  if (broadcast) broadcast({ type: 'job:created', job });
+
+  res.status(201).json({ jobId: id, status: 'pending' });
+});
+
+// GET /api/jobs/:id/status
+app.get('/api/jobs/:id/status', (req, res) => {
+  const job = jobRegistry.get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  res.json(job);
+});
+
+// GET /api/jobs/:id/result
+app.get('/api/jobs/:id/result', (req, res) => {
+  const job = jobRegistry.get(req.params.id);
+  if (!job) return res.status(404).json({ error: 'Job not found' });
+  if (job.status !== 'complete') return res.status(202).json({ status: job.status });
+  res.json({ jobId: job.id, resultPaths: job.resultPaths });
+});
+
+// GET /api/jobs  – list all jobs
+app.get('/api/jobs', (req, res) => {
+  res.json({ jobs: Array.from(jobRegistry.values()) });
+});
+
+// ─── Config / Preset endpoints ────────────────────────────────────────────────
+
+const PRESETS_FILE = path.join(ROOT, 'presets.json');
+
+function loadPresets() {
+  try { return JSON.parse(fs.readFileSync(PRESETS_FILE, 'utf8')); } catch { return []; }
+}
+
+function savePresets(presets) {
+  fs.writeFileSync(PRESETS_FILE, JSON.stringify(presets, null, 2));
+}
+
+app.get('/api/config/presets', (req, res) => res.json(loadPresets()));
+
+app.post('/api/config/presets', (req, res) => {
+  const preset = { id: crypto.randomUUID ? crypto.randomUUID() : `p_${Date.now()}`, ...req.body, createdAt: Date.now() };
+  const presets = [preset, ...loadPresets().filter((p) => p.id !== preset.id)];
+  savePresets(presets);
+  res.status(201).json(preset);
+});
+
+app.delete('/api/config/presets/:id', (req, res) => {
+  const presets = loadPresets().filter((p) => p.id !== req.params.id);
+  savePresets(presets);
+  res.json({ ok: true });
+});
+
+const PIPELINE_PARAMS_FILE = path.join(ROOT, 'pipeline-params.json');
+const DEFAULT_PARAMS = { denoiseStrength: 0.5, glareThreshold: 0.7, upscaleFactor: 2, contrast: 1, saturation: 1 };
+
+function loadParams() {
+  try { return JSON.parse(fs.readFileSync(PIPELINE_PARAMS_FILE, 'utf8')); } catch { return DEFAULT_PARAMS; }
+}
+
+app.get('/api/config/params', (req, res) => res.json(loadParams()));
+
+app.post('/api/config/params', (req, res) => {
+  const params = { ...DEFAULT_PARAMS, ...req.body };
+  fs.writeFileSync(PIPELINE_PARAMS_FILE, JSON.stringify(params, null, 2));
+  res.json(params);
+});
+
+
   res.json({
     status: 'ok',
     uptime: process.uptime(),
@@ -802,6 +901,27 @@ const server = app.listen(PORT, () => {
   console.log(`║  Venice: ${!!getVeniceKey() ? 'Connected' : 'NO KEY SET'}              ║`);
   console.log(`║  Frontend: ${fs.existsSync(frontendDist) ? 'Served from dist/' : 'Dev mode (npm run dev)'}       ║`);
   console.log(`╚══════════════════════════════════════════════╝\n`);
+});
+
+// ─── WebSocket Server (/ws/status) ───────────────────────────────────────────
+
+const wss = new WebSocketServer({ server, path: '/ws/status' });
+
+/** Broadcast a JSON message to all connected WS clients */
+function wsBroadcast(data) {
+  const msg = JSON.stringify(data);
+  wss.clients.forEach((client) => {
+    if (client.readyState === 1 /* OPEN */) client.send(msg);
+  });
+}
+
+// Expose broadcaster so route handlers can call it
+app.locals.wsBroadcast = wsBroadcast;
+
+wss.on('connection', (ws, req) => {
+  console.log(`[WS] Client connected from ${req.socket.remoteAddress}`);
+  ws.send(JSON.stringify({ type: 'connected', ts: Date.now() }));
+  ws.on('error', (err) => console.error('[WS] Client error:', err.message));
 });
 
 process.on('unhandledRejection', (reason) => { console.error('[UNHANDLED REJECTION] Server staying alive:', reason); });

@@ -3,7 +3,9 @@ import { API_ENDPOINTS } from '@/lib/api-client';
 import { fileToBase64 } from '@/lib/file-utils';
 import { useVeniceStatus } from '@/hooks/useVeniceStatus';
 import { toast } from 'sonner';
-import type { BatchItem, BatchItemState, ScanAnalysisResult } from '@/types';
+import type { BatchItem, BatchItemState, JobPriority, ScanAnalysisResult } from '@/types';
+import { useJobStore } from '@/store/jobStore';
+import type { PersistedJob } from '@/db/schema';
 
 const MAX_CARDS = 50;
 const DEFAULT_CONCURRENCY = 3;
@@ -20,7 +22,7 @@ interface UseBatchQueueReturn {
   isRunning: boolean;
   isPaused: boolean;
   globalProgress: number;
-  addFiles: (files: File[]) => void;
+  addFiles: (files: File[], priority?: JobPriority) => void;
   startBatch: () => void;
   pauseBatch: () => void;
   resumeBatch: () => void;
@@ -82,6 +84,7 @@ export function useBatchQueue(options: UseBatchQueueOptions = {}): UseBatchQueue
   itemsRef.current = items;
 
   const { data: veniceStatus } = useVeniceStatus();
+  const { upsertJob, removeJob } = useJobStore();
 
   const remainingRequests = veniceStatus?.remainingRequests
     ? parseInt(veniceStatus.remainingRequests, 10)
@@ -101,7 +104,7 @@ export function useBatchQueue(options: UseBatchQueueOptions = {}): UseBatchQueue
     }
   }, []);
 
-  const addFiles = useCallback((files: File[]) => {
+  const addFiles = useCallback((files: File[], priority: JobPriority = 'normal') => {
     const currentCount = itemsRef.current.length;
     const availableSlots = MAX_CARDS - currentCount;
 
@@ -131,6 +134,8 @@ export function useBatchQueue(options: UseBatchQueueOptions = {}): UseBatchQueue
       analysis: null,
       cleanedUrl: null,
       strength: 0.5,
+      priority,
+      createdAt: Date.now(),
     }));
 
     // Detect orientation asynchronously for each file
@@ -145,6 +150,27 @@ export function useBatchQueue(options: UseBatchQueueOptions = {}): UseBatchQueue
 
     setItems((prev) => [...prev, ...newItems]);
 
+    // Persist initial state
+    newItems.forEach((item) => {
+      upsertJob({
+        id: item.id,
+        filename: item.filename,
+        side: item.side,
+        material: item.material,
+        orientation: item.orientation,
+        state: item.state,
+        progress: item.progress,
+        error: item.error,
+        analysis: item.analysis,
+        cleanedDataUrl: null,
+        previewDataUrl: null,
+        strength: item.strength,
+        priority: item.priority,
+        createdAt: item.createdAt,
+        completedAt: null,
+      });
+    });
+
     const frontCount = newItems.filter((i) => i.side === 'front').length;
     const backCount = newItems.filter((i) => i.side === 'back').length;
     const pairs = Math.min(frontCount, backCount);
@@ -153,11 +179,36 @@ export function useBatchQueue(options: UseBatchQueueOptions = {}): UseBatchQueue
     toast.success(
       `Added ${newItems.length} cards — ${pairs} pairs${singles > 0 ? ` + ${singles} single${singles > 1 ? 's' : ''}` : ''}`,
     );
-  }, []);
+  }, [upsertJob]);
 
   const updateItem = useCallback((id: string, updates: Partial<BatchItem>) => {
-    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...updates } : item)));
-  }, []);
+    setItems((prev) => {
+      const next = prev.map((item) => (item.id === id ? { ...item, ...updates } : item));
+      const updated = next.find((i) => i.id === id);
+      if (updated) {
+        // Persist to IndexedDB (without non-serialisable File object)
+        const persisted: PersistedJob = {
+          id: updated.id,
+          filename: updated.filename,
+          side: updated.side,
+          material: updated.material,
+          orientation: updated.orientation,
+          state: updated.state,
+          progress: updated.progress,
+          error: updated.error,
+          analysis: updated.analysis,
+          cleanedDataUrl: updated.cleanedUrl,
+          previewDataUrl: null, // omit blob URL – not serialisable
+          strength: updated.strength,
+          priority: updated.priority,
+          createdAt: updated.createdAt,
+          completedAt: updated.state === 'complete' ? Date.now() : null,
+        };
+        upsertJob(persisted);
+      }
+      return next;
+    });
+  }, [upsertJob]);
 
   const processItem = useCallback(
     async (item: BatchItem): Promise<void> => {
@@ -378,8 +429,9 @@ export function useBatchQueue(options: UseBatchQueueOptions = {}): UseBatchQueue
     (id: string) => {
       revokePreviewUrl(id);
       setItems((prev) => prev.filter((item) => item.id !== id));
+      removeJob(id);
     },
-    [revokePreviewUrl],
+    [revokePreviewUrl, removeJob],
   );
 
   const clearAll = useCallback(() => {

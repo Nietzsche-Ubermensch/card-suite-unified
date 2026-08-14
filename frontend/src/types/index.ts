@@ -1,6 +1,7 @@
 export type MaterialType = 'cardboard' | 'chrome' | 'refractor' | 'unknown';
 export type Orientation = 'horizontal' | 'vertical' | 'unknown';
 export type BatchItemState = 'queued' | 'analyzing' | 'cleaning' | 'complete' | 'paused' | 'cancelled' | 'failed';
+export type JobPriority = 'low' | 'normal' | 'high';
 export type WorkspaceView = 'scan-cleanup' | 'batch-cleanup' | 'compare' | 'export';
 export type ModelCategory = 'chat' | 'analysis' | 'restore' | 'image';
 
@@ -82,6 +83,8 @@ export interface BatchItem {
   analysis: ScanAnalysisResult | null;
   cleanedUrl: string | null;
   strength: number;
+  priority: JobPriority;
+  createdAt: number;
 }
 
 export interface ChatMessage {
