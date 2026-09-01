@@ -180,7 +180,7 @@ app.post('/api/config/params', (req, res) => {
   res.json(params);
 });
 
-
+app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     uptime: process.uptime(),
