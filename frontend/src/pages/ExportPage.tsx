@@ -191,6 +191,8 @@ function useBatchItems(): { items: BatchItem[]; isLoading: boolean; csvGenerated
             error: null,
             analysis: null,
             strength: 0.5,
+            priority: 'normal' as const,
+            createdAt: Date.now(),
           }));
           setItems(cardItems);
         }

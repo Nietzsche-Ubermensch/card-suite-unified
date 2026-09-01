@@ -9,6 +9,19 @@ export default defineConfig({
   plugins: [inspectAttr(), react()],
   server: {
     port: 3000,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3999',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://localhost:3999',
+        ws: true,
+        changeOrigin: true,
+      },
+      '/uploads': { target: 'http://localhost:3999', changeOrigin: true },
+      '/cropped': { target: 'http://localhost:3999', changeOrigin: true },
+    },
   },
   resolve: {
     alias: {
