@@ -1,6 +1,6 @@
 /**
  * CARD PIPELINE API ROUTES v2
- * Backends: GFPGANv1, SyntronSD2, OpenAI, xAI, Venice, OpenRouter, Gemini
+ * Backends: GFPGANv1, SyntronSD2, OpenAI, Venice, OpenRouter, Gemini
  *
  * Availability is measured, not assumed:
  *   local  → checkpoint / weight files exist on disk
@@ -52,15 +52,6 @@ const AI_PROVIDERS: Record<string, ProviderCfg> = {
     envKey: "OPENAI_API_KEY",
     endpoint: "https://api.openai.com/v1/images/generations",
     model: "dall-e-3",
-  },
-  xai: {
-    type: "cloud",
-    name: "xAI Grok Imagine",
-    description: "High-fidelity restoration. Best for detail preservation.",
-    requires: ["XAI_API_KEY"],
-    envKey: "XAI_API_KEY",
-    endpoint: "https://api.x.ai/v1/images/generations",
-    model: "grok-imagine-image-2.0",
   },
   venice: {
     type: "cloud",
@@ -135,7 +126,6 @@ function optimizePrompt(provider: string, meta: Record<string, unknown>): string
     gfpgan: `${base}${feat ? ", " + feat : ""}`,
     syntron: `${base}${feat ? ", " + feat : ""}. Sports trading card, sharp corners, vibrant colors, pristine condition.`,
     openai: `${base}${feat ? ", " + feat : ""}. Photorealistic trading card scan, razor-sharp corners, vibrant team colors, museum-quality lighting, 8k resolution, professional sports photography, pristine holographic foil, no surface scratches.`,
-    xai: `${base}${feat ? ", " + feat : ""}. High-fidelity card restoration, accurate color reproduction, sharp typography, holographic foil details preserved, gem mint condition visualization.`,
     venice: `${base}${feat ? ", " + feat : ""}. Digital masterpiece, hyper-detailed sports card art, chromatic aberration corrected, premium stock texture, archival scan quality.`,
     openrouter: `${base}${feat ? ", " + feat : ""}. Cinematic 8k HDR sports card photography, micro-detail enhancement, surface imperfection removal, professional PSA grading lighting.`,
     gemini: `${base}${feat ? ", " + feat : ""}. Ultra-sharp focus, color-accurate team branding, pristine holographic elements, museum archival standard.`,
