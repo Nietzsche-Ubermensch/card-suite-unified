@@ -7,6 +7,7 @@ const sharp = require('sharp');
 const { WebSocketServer } = require('ws');
 const { buildRow, HEADERS } = require('./build-eBay-csv');
 const { Readable } = require('stream');
+const pipeline = require('./lib/pipeline');
 
 const app = express();
 app.use(cors());
@@ -63,6 +64,15 @@ function veniceHeaders(extra = {}) {
   };
 }
 
+/** Accept a bare base64 string or a data: URL and return the image bytes. */
+function decodeImage(image) {
+  if (typeof image !== 'string' || !image) throw new Error('image must be a base64 string');
+  const b64 = image.startsWith('data:') ? image.slice(image.indexOf(',') + 1) : image;
+  const buf = Buffer.from(b64, 'base64');
+  if (buf.length < 64) throw new Error('image payload is empty or not base64');
+  return buf;
+}
+
 // ─── Cards Database ───
 
 function loadDB() {
@@ -101,6 +111,24 @@ function createJobEntry(id, filenames, priority = 'normal') {
   };
 }
 
+// Local, deterministic image pipeline worker (see lib/pipeline). Broadcast is
+// looked up lazily because the WebSocket server is created after app.listen.
+const pipelineWorker = pipeline.createWorker({
+  registry: jobRegistry,
+  inputDir: UPLOADS_DIR,
+  outDir: ENHANCED_DIR,
+  publicPrefix: '/enhanced',
+  broadcast: (msg) => app.locals.wsBroadcast && app.locals.wsBroadcast(msg),
+  log: (...a) => console.log(...a),
+  processFile: (inputPath, job) => pipeline.enhanceImage(fs.readFileSync(inputPath), {
+    strength: Number(job.strength ?? 0.45),
+    material: job.material,
+    orientation: job.orientation,
+    params: loadParams(),
+    name: path.basename(inputPath),
+  }),
+});
+
 // POST /api/jobs/submit
 app.post('/api/jobs/submit', upload.array('images', 24), (req, res) => {
   const id = crypto.randomUUID ? crypto.randomUUID() : `job_${Date.now()}`;
@@ -109,7 +137,11 @@ app.post('/api/jobs/submit', upload.array('images', 24), (req, res) => {
   if (filenames.length === 0) return res.status(400).json({ error: 'No images provided' });
 
   const job = createJobEntry(id, filenames, priority);
+  if (req.body.strength != null) job.strength = Number(req.body.strength);
+  if (req.body.material) job.material = String(req.body.material);
+  if (req.body.orientation) job.orientation = String(req.body.orientation);
   jobRegistry.set(id, job);
+  pipelineWorker.enqueue(job);
 
   // Broadcast new job event via WebSocket
   const broadcast = req.app.locals.wsBroadcast;
@@ -296,6 +328,12 @@ app.post('/api/crop', async (req, res) => {
     if (!filename) return res.status(400).json({ error: 'filename required' });
     const inputPath = path.join(UPLOADS_DIR, filename);
     if (!fs.existsSync(inputPath)) return res.status(404).json({ error: 'File not found' });
+    const meta = await sharp(inputPath).metadata();
+    const area = { left: Math.round(x), top: Math.round(y), width: Math.round(width), height: Math.round(height) };
+    if (![area.left, area.top, area.width, area.height].every(Number.isFinite) || area.left < 0 || area.top < 0 || area.width < 1 || area.height < 1
+        || area.left + area.width > meta.width || area.top + area.height > meta.height) {
+      return res.status(400).json({ error: `Crop area ${JSON.stringify(area)} is outside the ${meta.width}x${meta.height} image` });
+    }
     const cropName = `cropped_${Date.now()}_${filename}`;
     const outputPath = path.join(CROPPED_DIR, cropName);
     await sharp(inputPath).extract({ left: Math.round(x), top: Math.round(y), width: Math.round(width), height: Math.round(height) }).jpeg({ quality: 90 }).toFile(outputPath);
@@ -354,6 +392,12 @@ app.post('/api/resize', async (req, res) => {
 
 app.use('/uploads', express.static(UPLOADS_DIR));
 app.use('/cropped', express.static(CROPPED_DIR));
+app.use('/enhanced', express.static(ENHANCED_DIR));
+
+// GET /api/pipeline/capabilities — measured, not assumed
+app.get('/api/pipeline/capabilities', (req, res) => {
+  res.json(pipeline.capabilities({ outDir: ENHANCED_DIR }));
+});
 
 // ─── Venice AI Enhancement ───
 
@@ -688,46 +732,16 @@ app.post('/api/chat', async (req, res) => {
 // POST /api/ai/analyze — Vision analysis of card scans via Venice chat with vision
 app.post('/api/ai/analyze', async (req, res) => {
   try {
-    const { image, model } = req.body;
+    const { image, filename } = req.body;
     if (!image) return res.status(400).json({ error: 'image (base64 or URL) required' });
-    const analysisModel = model || 'qwen3-vl-235b-a22b';
-    const prompt = `Analyze this trading card scan. Identify:
-1. Material type (cardboard, chrome, refractor)
-2. Orientation (horizontal, vertical)
-3. Artifact types (scratches, dust, fingerprints, color cast, lighting issues)
-4. Artifact locations (top, bottom, left, right, center, edges)
-5. Color cast (if any)
-6. Lighting issues (if any)
-7. Card condition (intact or damaged)
-8. Recommended cleanup approach
-9. Confidence score (0-1)
-
-Return as JSON: {"material":"...","orientation":"...","artifactTypes":[...],"artifactLocations":[...],"colorCast":"...","lightingIssues":[...],"cardConditionIntact":true,"recommendedApproach":"...","confidence":0.8}`;
-
-    const messages = [{
-      role: 'user',
-      content: [
-        { type: 'text', text: prompt },
-        { type: 'image_url', image_url: { url: image.startsWith('data:') ? image : `data:image/jpeg;base64,${image}` } },
-      ],
-    }];
-
-    const resp = await fetch(`${VENICE_BASE}/chat/completions`, {
-      method: 'POST',
-      headers: veniceHeaders(),
-      body: JSON.stringify({ model: analysisModel, messages, max_tokens: 1000, temperature: 0.2 }),
-    });
-    if (!resp.ok) { const t = await resp.text(); return res.status(resp.status).json({ error: t.substring(0, 500) }); }
-    const data = await resp.json();
-    const content = data.choices?.[0]?.message?.content || '{}';
-    let result;
-    try { const m = content.match(/\{[\s\S]*\}/); result = JSON.parse(m ? m[0] : content); }
-    catch { result = { material: 'unknown', orientation: 'unknown', confidence: 0.5, recommendedApproach: content.substring(0, 200) }; }
+    const buf = decodeImage(image);
+    const result = await pipeline.analyzeImage(buf, { params: loadParams() });
+    if (filename) result.filename = filename;
     res.json(result);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/ai/restore — Image restoration via Venice image edit
+// POST /api/ai/restore// POST /api/ai/restore — Image restoration via Venice image edit
 app.post('/api/ai/restore', async (req, res) => {
   try {
     const { image, prompt, model, strength } = req.body;
@@ -750,64 +764,42 @@ app.post('/api/ai/restore', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// POST /api/ai/scan-cleanup — Full scan cleanup pipeline (analyze + restore)
+// POST /api/ai/scan-cleanup — local deterministic pipeline (analyze + enhance).
+// Generative restoration is still available explicitly via /api/ai/restore.
 app.post('/api/ai/scan-cleanup', async (req, res) => {
   try {
-    const { image, model, strength } = req.body;
-    if (!image) return res.status(400).json({ error: 'image required' });
-
-    // Step 1: Analyze
-    const analysisResp = await fetch(`${VENICE_BASE}/chat/completions`, {
-      method: 'POST',
-      headers: veniceHeaders(),
-      body: JSON.stringify({
-        model: model || 'qwen3-vl-235b-a22b',
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'text', text: 'Analyze this trading card scan briefly. Return JSON: {"material":"cardboard|chrome|refractor","artifactTypes":[],"recommendedApproach":"...","confidence":0.8}' },
-            { type: 'image_url', image_url: { url: image.startsWith('data:') ? image : `data:image/jpeg;base64,${image}` } },
-          ],
-        }],
-        max_tokens: 500,
-        temperature: 0.2,
-      }),
+    const { image, strength, material, orientation, filename } = req.body;
+    if (!image) return res.status(400).json({ error: 'image (base64 or URL) required' });
+    const buf = decodeImage(image);
+    const params = loadParams();
+    const name = filename ? path.basename(String(filename)) : 'scan';
+    const analysis = await pipeline.analyzeImage(buf, { params });
+    const out = await pipeline.enhanceImage(buf, {
+      strength: strength != null ? Number(strength) : 0.45,
+      material,
+      orientation,
+      params,
+      name,
     });
-    let analysis = {};
-    if (analysisResp.ok) {
-      const aData = await analysisResp.json();
-      const content = aData.choices?.[0]?.message?.content || '{}';
-      try { const m = content.match(/\{[\s\S]*\}/); analysis = JSON.parse(m ? m[0] : content); } catch { analysis = { confidence: 0.5 }; }
-    }
-
-    // Step 2: Restore via image edit
-    const restoreResp = await fetch(`${VENICE_BASE}/image/edit`, {
-      method: 'POST',
-      headers: veniceHeaders(),
-      body: JSON.stringify({
-        model: 'flux-dev',
-        image,
-        prompt: `Clean up this trading card scan. ${analysis.recommendedApproach || 'Remove dust, scratches, and color cast.'} Preserve the card image, text, and serial numbers.`,
-        strength: strength || 0.35,
-        return_base64: true,
-      }),
-    });
-
-    let cleanedImage = null;
-    if (restoreResp.ok) {
-      const rData = await restoreResp.json();
-      cleanedImage = rData.images?.[0] || rData.data?.[0] || null;
-    }
-
+    const outName = `clean_${Date.now()}_${name.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/\.[^.]*$/, '')}.jpg`;
+    fs.writeFileSync(path.join(ENHANCED_DIR, outName), out.buffer);
     res.json({
       analysis,
-      cleanedImage,
-      success: !!cleanedImage,
+      cleanedImage: `data:image/jpeg;base64,${out.buffer.toString('base64')}`,
+      cleanedPath: `/enhanced/${outName}`,
+      width: out.width,
+      height: out.height,
+      steps: out.steps,
+      engine: 'local-sharp',
+      success: true,
     });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    const status = e.code === 'MEASUREMENT_VIOLATION' ? 422 : 500;
+    res.status(status).json({ error: e.message, details: e.details });
+  }
 });
 
-// POST /api/images/generate — Venice image generation
+// POST /api/images/generate// POST /api/images/generate — Venice image generation
 app.post('/api/images/generate', async (req, res) => {
   try {
     const { prompt, model, width, height, numImages } = req.body;

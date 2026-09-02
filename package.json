@@ -12,7 +12,7 @@
     "pipeline": "node launcher.js",
     "evolve": "bash evolver/run.sh 5 ./evolver/results",
     "evolve:quick": "bash evolver/run.sh 3 ./evolver/results",
-    "test": "node test-api.js"
+    "test": "node --test test/*.test.js"
   },
   "repository": {
     "type": "git",
