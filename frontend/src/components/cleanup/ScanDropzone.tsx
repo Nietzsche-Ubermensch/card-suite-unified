@@ -75,14 +75,9 @@ export default function ScanDropzone({ onFileDrop, disabled = false }: ScanDropz
     multiple: false,
   });
 
-  // Sync drag-active state with our visual state
-  useEffect(() => {
-    if (isDragActive) {
-      setState('drag-over');
-    } else if (state === 'drag-over') {
-      setState('default');
-    }
-  }, [isDragActive]);
+  // Drag-over is derived from react-dropzone's isDragActive rather than
+  // mirrored into state (avoids setState-in-effect cascading renders).
+  const visualState: DropzoneState = isDragActive ? 'drag-over' : state;
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -104,13 +99,13 @@ export default function ScanDropzone({ onFileDrop, disabled = false }: ScanDropz
       className={cn(
         'w-full min-h-[400px] flex flex-col items-center justify-center rounded-lg border-2 border-dashed transition-all duration-200 cursor-pointer select-none',
         'bg-[#131821] border-[#2A2E39]',
-        state === 'drag-over' && 'border-[#6366f1] bg-[#1a2030] shadow-[0_0_8px_rgba(99,102,241,0.15)]',
-        state === 'error' && 'border-[#ef4444]',
-        state === 'success' && 'border-[#10b981]',
+        visualState === 'drag-over' && 'border-[#6366f1] bg-[#1a2030] shadow-[0_0_8px_rgba(99,102,241,0.15)]',
+        visualState === 'error' && 'border-[#ef4444]',
+        visualState === 'success' && 'border-[#10b981]',
         disabled && 'opacity-40 cursor-not-allowed',
       )}
       style={
-        state === 'error'
+        visualState === 'error'
           ? { animation: 'shake 0.3s ease-in-out' }
           : undefined
       }
@@ -130,21 +125,18 @@ export default function ScanDropzone({ onFileDrop, disabled = false }: ScanDropz
 
       <div className="flex flex-col items-center gap-4 px-6 text-center">
         {/* Icon */}
-        {state === 'error' ? (
+        {visualState === 'error' ? (
           <Image
-            className={cn(
-              'size-12 transition-colors duration-200',
-              state === 'error' ? 'text-[#ef4444]' : 'text-[#5e6a7e]',
-            )}
+            className="size-12 transition-colors duration-200 text-[#ef4444]"
             strokeWidth={1.5}
           />
         ) : (
           <Upload
             className={cn(
               'size-12 transition-colors duration-200',
-              state === 'drag-over' && 'text-[#6366f1]',
-              state === 'success' && 'text-[#10b981]',
-              state === 'default' && 'text-[#5e6a7e]',
+              visualState === 'drag-over' && 'text-[#6366f1]',
+              visualState === 'success' && 'text-[#10b981]',
+              visualState === 'default' && 'text-[#5e6a7e]',
             )}
             strokeWidth={1.5}
           />
@@ -152,7 +144,7 @@ export default function ScanDropzone({ onFileDrop, disabled = false }: ScanDropz
 
         {/* Primary text */}
         <p className="text-lg font-semibold text-[#e8eaf0]">
-          {state === 'error' ? 'Upload failed' : 'Drop your card scan here'}
+          {visualState === 'error' ? 'Upload failed' : 'Drop your card scan here'}
         </p>
 
         {/* Secondary text */}

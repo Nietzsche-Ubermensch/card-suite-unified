@@ -46,12 +46,15 @@ export default function SettingsDialog({ open, onOpenChange }: SettingsDialogPro
   const { models, isLoading, error, refetch } = useVeniceModels();
   const { updateSelection } = useModelSelection();
 
-  // Reset to first tab when dialog opens
-  useEffect(() => {
-    if (open) {
-      setActiveTab('models');
-    }
-  }, [open]);
+  // Reset to first tab when the dialog transitions to open. This is the
+  // "adjust state when a prop changes" pattern from the React docs: the
+  // update happens during render (React re-renders immediately) instead of
+  // in an effect, which would paint the stale tab first.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) setActiveTab('models');
+  }
 
   // Keyboard shortcuts
   useEffect(() => {

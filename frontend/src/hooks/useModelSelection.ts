@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useVeniceModels } from './useVeniceModels';
 import type { ModelSelection } from '@/types';
 
@@ -29,37 +29,37 @@ export function useModelSelection() {
   const { models, categorized } = useVeniceModels();
   const [selected, setSelected] = useState<ModelSelection>(loadSavedSelection);
 
-  // Repair stale selections when models change
-  useEffect(() => {
-    if (!models.length || !categorized) return;
+  // Repair stale selections when models change. The repaired value is
+  // derived during render (pure) rather than written back via setState in
+  // an effect; only the localStorage sync is a side effect.
+  const repaired = useMemo<ModelSelection>(() => {
+    if (!models.length || !categorized) return selected;
 
     const validIds = new Set(models.map((m) => m.id));
+    const next: ModelSelection = { ...selected };
+    let changed = false;
 
-    setSelected((current) => {
-      const next: ModelSelection = { ...current };
-      let changed = false;
-
-      const repair = (key: keyof ModelSelection, categoryModels: typeof models) => {
-        if (current[key] && !validIds.has(current[key])) {
-          const replacement = categoryModels[0]?.id ?? '';
-          next[key] = replacement;
-          changed = true;
-        }
-      };
-
-      repair('chat', categorized.chat);
-      repair('analysis', categorized.analysis);
-      repair('restore', categorized.restore);
-      repair('image', categorized.image);
-
-      if (changed) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-        return next;
+    const repair = (key: keyof ModelSelection, categoryModels: typeof models) => {
+      if (selected[key] && !validIds.has(selected[key])) {
+        next[key] = categoryModels[0]?.id ?? '';
+        changed = true;
       }
-      // Return current reference — React bails out of re-render when value is identical
-      return current;
-    });
-  }, [models, categorized]);
+    };
+
+    repair('chat', categorized.chat);
+    repair('analysis', categorized.analysis);
+    repair('restore', categorized.restore);
+    repair('image', categorized.image);
+
+    // Same reference when nothing changed so consumers can bail out.
+    return changed ? next : selected;
+  }, [selected, models, categorized]);
+
+  useEffect(() => {
+    if (repaired !== selected) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(repaired));
+    }
+  }, [repaired, selected]);
 
   const updateSelection = useCallback((key: keyof ModelSelection, modelId: string) => {
     setSelected((current) => {
@@ -81,7 +81,7 @@ export function useModelSelection() {
   };
 
   return {
-    selected,
+    selected: repaired,
     updateSelection,
     isModelAvailable,
   };

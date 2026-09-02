@@ -81,7 +81,9 @@ export function useBatchQueue(options: UseBatchQueueOptions = {}): UseBatchQueue
   const runnerRef = useRef<Promise<void> | null>(null);
   const pauseRequested = useRef(false);
   const itemsRef = useRef(items);
-  itemsRef.current = items;
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
 
   const { data: veniceStatus } = useVeniceStatus();
   const { upsertJob, removeJob } = useJobStore();
