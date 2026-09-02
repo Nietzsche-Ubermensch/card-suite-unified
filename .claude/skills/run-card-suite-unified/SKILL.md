@@ -93,6 +93,30 @@ succeeded.
 | `console --errors` | print captured `console.error`/`pageerror` since launch |
 | `quit` | close the browser, exit |
 
+## Image pipeline endpoints (local, no API key)
+
+The cleanup path is `lib/pipeline/` (sharp, deterministic). Smoke it with curl —
+`image` is bare base64 or a data URL:
+
+```bash
+B64=$(base64 -w0 test/fixtures/lola-vice-sideways.jpg)
+printf '{"image":"%s","filename":"lola.jpg","strength":0.45}' "$B64" > /tmp/req.json
+curl -s -X POST localhost:3999/api/ai/analyze -H 'Content-Type: application/json' --data-binary @/tmp/req.json | jq '{orientation,confidence,artifactTypes}'
+curl -s -X POST localhost:3999/api/ai/scan-cleanup -H 'Content-Type: application/json' --data-binary @/tmp/req.json | jq '{success,width,height,cleanedPath,steps:[.steps[].step]}'
+curl -s -F images=@test/fixtures/julia-hart-upright.jpg localhost:3999/api/jobs/submit   # then GET /api/jobs/<id>/status
+curl -s localhost:3999/api/pipeline/capabilities | jq .
+```
+
+Outputs land in `enhanced/` (served at `/enhanced/`, gitignored). A too-small
+result is a 422 `MEASUREMENT_VIOLATION` (long edge must be ≥ 1600px).
+
+## Test
+
+```bash
+npm test              # node --test test/*.test.js — real images, ~20s
+cd frontend && npm run lint && npx tsc -b
+```
+
 ## Stopping
 
 ```bash
@@ -141,8 +165,9 @@ separately as shown above (`node server.js` and, in `frontend/`,
   line 192). If you see this again after a `git pull`, check
   `server.js` around the `/api/health` route.
 
-- **`/api/models` (and anything else that calls Venice AI) 500s
-  without `VENICE_API_KEY`.** This is expected in this environment — no
+- **`/api/models`, `/api/chat`, `/api/ai/restore` and other Venice-backed routes 500s
+  without `VENICE_API_KEY`.** Analyze / Clean / Batch no longer need it — they
+  run the local sharp pipeline. This is expected in this environment — no
   key is configured — and the route fails gracefully with
   `{"error":"VENICE_API_KEY not found"}`, not a crash. The "Model
   Catalogue" page will show a permanent "Loading models..." spinner in

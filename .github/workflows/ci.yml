@@ -44,9 +44,7 @@ jobs:
         run: |
           if [ -f "server/package.json" ]; then cd server; fi
           npm ci || npm install
-          npm test 2>/dev/null || echo "No test script found"
-          npx tsc --noEmit 2>/dev/null || true
-        continue-on-error: true
+          npm test
 
       - name: Setup Python
         if: steps.detect.outputs.type == 'python'
