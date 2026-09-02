@@ -85,6 +85,7 @@ succeeded.
 | `click <css-sel>` | click via Playwright's locator |
 | `click-text <text>` | click the first element containing this text |
 | `fill <css-sel> <text>` | fill a form field (goes through React's input pipeline) |
+| `upload <css-sel> <path>` | set a file input (e.g. `upload input[type=file] /path/scan.jpg` on the Scan/Batch Cleanup dropzones) |
 | `type <text>` / `press <key>` | keyboard input |
 | `wait-for <css-sel \| text=...>` | wait up to 10s for an element or text |
 | `eval <js>` | evaluate JS in the page, print JSON |

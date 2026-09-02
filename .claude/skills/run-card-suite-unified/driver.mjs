@@ -73,6 +73,14 @@ const COMMANDS = {
     catch (e) { console.log('fill', sel, '-> ERROR:', e.message.split('\n')[0]); }
   },
 
+  async upload(args) {
+    if (!page) return console.log('ERROR: launch first');
+    const [sel, ...rest] = args.split(/\s+/);
+    const file = rest.join(' ');
+    try { await page.setInputFiles(sel, file); console.log('upload', sel, '<-', file); }
+    catch (e) { console.log('upload', sel, '-> ERROR:', e.message.split('\n')[0]); }
+  },
+
   async type(text) { if (page) await page.keyboard.type(text, { delay: 20 }); },
   async press(key) { if (page) await page.keyboard.press(key); },
 
