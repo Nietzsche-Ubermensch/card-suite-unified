@@ -84,7 +84,7 @@ succeeded.
 | `screenshot-element <sel> [name]` | screenshot one element |
 | `click <css-sel>` | click via Playwright's locator |
 | `click-text <text>` | click the first element containing this text |
-| `fill <css-sel> <text>` | fill a form field (goes through React's input pipeline) |
+| `fill <css-sel> <text>` | fill a form field (goes through React's input pipeline). Quote a selector that contains spaces, and prefer single quotes *inside* it so nothing needs escaping on the way through `tmux send-keys`: `fill "input[placeholder='Card #']" 22` |
 | `upload <css-sel> <path>` | set a file input (e.g. `upload input[type=file] /path/scan.jpg` on the Scan/Batch Cleanup dropzones) |
 | `type <text>` / `press <key>` | keyboard input |
 | `wait-for <css-sel \| text=...>` | wait up to 10s for an element or text |
@@ -109,6 +109,31 @@ curl -s localhost:3999/api/pipeline/capabilities | jq .
 
 Outputs land in `enhanced/` (served at `/enhanced/`, gitignored). A too-small
 result is a 422 `MEASUREMENT_VIOLATION` (long edge must be ≥ 1600px).
+
+## Card identification and comps (`lib/cards/`, sports cards only)
+
+Comps are pure local URL building — **no API key, no network, no scraping**.
+Only `/api/cards/extract` needs Venice (503 without a key, 422 on a schema
+mismatch), and it is the one that reads the two scans with a vision model.
+
+```bash
+curl -s localhost:3999/api/cards/parallels | jq '.parallels | length'
+curl -s -X POST localhost:3999/api/cards/comps -H 'Content-Type: application/json' \
+  -d '{"card":{"playerName":"Aaron Judge","copyrightYear":"2025","manufacturer":"Topps","productSet":"Finest","cardNumber":"51","parallelType":"checkerboard","sport":"baseball"}}' \
+  | jq '{recommended: .comps.recommended, queries: [.comps.searches[].query], warnings}'
+```
+
+Two rules the code enforces that are easy to undo by accident:
+
+- Comps search the **print run**, not your serial — `/299` finds every sale
+  from the run, `190/299` finds only your one copy.
+- Every comps URL sets `LH_Sold=1&LH_Complete=1`. Active listings are asking
+  prices, not comps.
+
+The UI for all this is **Price Check** (`frontend/src/pages/PriceCheck.tsx`).
+Drive it with single-quoted selectors, e.g.
+`fill "input[placeholder='Julia Hart']" Julia Hart`; the comps ladder is
+debounced, so `wait-for "a[href*=ebay]"` before asserting on it.
 
 ## Test
 

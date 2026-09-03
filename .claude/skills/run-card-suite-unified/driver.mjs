@@ -13,6 +13,30 @@ import { pathToFileURL } from 'node:url';
 const globalRoot = execSync('npm root -g').toString().trim();
 const { chromium } = await import(pathToFileURL(path.join(globalRoot, 'playwright', 'index.mjs')).href);
 
+/**
+ * Split "<selector> <value>" where the selector may contain spaces if it is
+ * double-quoted: `fill "input[placeholder=\"Card #\"]" 22`.
+ * Inner quotes must be backslash-escaped (the escapes are stripped here), so
+ * the scan cannot stop at the first `"` it sees. A single-quoted CSS attribute
+ * value needs no escaping at all and is the easier form to type through tmux:
+ * `fill "input[placeholder='Card #']" 22`.
+ * Without quotes the first whitespace run separates selector from value.
+ */
+function splitArgs(args) {
+  const s = String(args ?? '').trim();
+  if (s.startsWith('"')) {
+    let out = '';
+    for (let i = 1; i < s.length; i++) {
+      if (s[i] === '\\' && i + 1 < s.length) { out += s[++i]; continue; }
+      if (s[i] === '"') return [out, s.slice(i + 1).trim()];
+      out += s[i];
+    }
+    // unterminated quote - fall through to whitespace splitting
+  }
+  const i = s.search(/\s/);
+  return i === -1 ? [s, ''] : [s.slice(0, i), s.slice(i + 1).trim()];
+}
+
 const SHOT_DIR = process.env.SCREENSHOT_DIR || '/tmp/shots';
 fs.mkdirSync(SHOT_DIR, { recursive: true });
 const BASE_URL = process.env.APP_URL || 'http://localhost:5999';
@@ -43,7 +67,7 @@ const COMMANDS = {
 
   async 'screenshot-element'(args) {
     if (!page) return console.log('ERROR: launch first');
-    const [sel, name] = args.split(/\s+(?=\S+$)/);
+    const [sel, name] = splitArgs(args);
     const f = path.join(SHOT_DIR, (name || `ss-el-${Date.now()}`) + '.png');
     const el = await page.$(sel);
     if (!el) return console.log('NOT_FOUND:', sel);
@@ -67,16 +91,14 @@ const COMMANDS = {
 
   async fill(args) {
     if (!page) return console.log('ERROR: launch first');
-    const [sel, ...rest] = args.split(/\s+/);
-    const value = rest.join(' ');
+    const [sel, value] = splitArgs(args);
     try { await page.fill(sel, value, { timeout: 5000 }); console.log('fill', sel, '<-', JSON.stringify(value)); }
     catch (e) { console.log('fill', sel, '-> ERROR:', e.message.split('\n')[0]); }
   },
 
   async upload(args) {
     if (!page) return console.log('ERROR: launch first');
-    const [sel, ...rest] = args.split(/\s+/);
-    const file = rest.join(' ');
+    const [sel, file] = splitArgs(args);
     try { await page.setInputFiles(sel, file); console.log('upload', sel, '<-', file); }
     catch (e) { console.log('upload', sel, '-> ERROR:', e.message.split('\n')[0]); }
   },
