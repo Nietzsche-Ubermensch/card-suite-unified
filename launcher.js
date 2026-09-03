@@ -15,7 +15,15 @@ function guard() {
 async function run() {
   console.log('=== Card Suite Pipeline ===');
   guard();
-  console.log('[STAGE 1] Enhancement with measurement gate...');
+  const { enhanceImage } = require('./engine_v9/enhance');
+  const inDir = path.join(__dirname, 'uploads');
+  const outDir = path.join(__dirname, 'enhanced');
+  const files = fs.existsSync(inDir) ? fs.readdirSync(inDir).filter((f) => /\.(jpe?g|png|webp|tiff?)$/i.test(f)) : [];
+  console.log(`[STAGE 1] Enhancement with measurement gate... (${files.length} file${files.length === 1 ? '' : 's'} in uploads/)`);
+  for (const f of files) {
+    // Any measurement violation throws and halts the batch (never a fake success).
+    await enhanceImage(path.join(inDir, f), path.join(outDir, f.replace(/\.[^.]*$/, '') + '.jpg'));
+  }
   console.log('[STAGE 1] Complete');
   console.log('[STAGE 2] CSV generation...');
   require('./build-eBay-csv');
@@ -23,6 +31,8 @@ async function run() {
   console.log('=== Pipeline Finished ===');
 }
 
-run().catch(e => { console.error(`[FATAL] ${e.message}`); process.exit(1); });
+if (require.main === module) {
+  run().catch(e => { console.error(`[FATAL] ${e.message}`); process.exit(1); });
+}
 
 module.exports = { guard, run };

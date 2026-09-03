@@ -33,15 +33,22 @@ export function useWebSocket({
   const unmountedRef = useRef(false);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Keep handler refs stable to avoid reconnecting on re-render
+  // Keep handler refs stable to avoid reconnecting on re-render.
+  // Refs are written in an effect (after commit), never during render.
   const onMessageRef = useRef(onMessage);
   const onOpenRef = useRef(onOpen);
   const onCloseRef = useRef(onClose);
   const onErrorRef = useRef(onError);
-  onMessageRef.current = onMessage;
-  onOpenRef.current = onOpen;
-  onCloseRef.current = onClose;
-  onErrorRef.current = onError;
+  useEffect(() => {
+    onMessageRef.current = onMessage;
+    onOpenRef.current = onOpen;
+    onCloseRef.current = onClose;
+    onErrorRef.current = onError;
+  });
+
+  // `connect` needs to re-schedule itself from ws.onclose; go through a ref
+  // so the callback doesn't reference itself before it's declared.
+  const connectRef = useRef<() => void>(() => {});
 
   const connect = useCallback(() => {
     if (unmountedRef.current || !enabled) return;
@@ -77,10 +84,14 @@ export function useWebSocket({
       if (unmountedRef.current) return;
       onCloseRef.current?.();
       if (reconnectDelay > 0) {
-        reconnectTimer.current = setTimeout(connect, reconnectDelay);
+        reconnectTimer.current = setTimeout(() => connectRef.current(), reconnectDelay);
       }
     };
   }, [url, enabled, reconnectDelay]);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   const send = useCallback((data: WsMessage) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {

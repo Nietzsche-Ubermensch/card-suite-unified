@@ -142,3 +142,12 @@ pids
 .vite/
 node_modules/
 frontend/node_modules/
+
+# Runtime-written pipeline state / extra image formats
+/presets.json
+/pipeline-params.json
+*.webp
+*.avif
+
+# Real test fixtures are intentionally tracked
+!test/fixtures/*.jpg

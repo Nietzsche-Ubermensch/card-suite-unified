@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { API_ENDPOINTS } from '@/lib/api-client';
 import { fileToBase64 } from '@/lib/file-utils';
 import { useVeniceStatus } from '@/hooks/useVeniceStatus';
@@ -81,7 +81,11 @@ export function useBatchQueue(options: UseBatchQueueOptions = {}): UseBatchQueue
   const runnerRef = useRef<Promise<void> | null>(null);
   const pauseRequested = useRef(false);
   const itemsRef = useRef(items);
-  itemsRef.current = items;
+  // Layout effect (not passive): the batch runner re-reads this ref right after
+  // yielding to React, so it must be in sync as soon as a commit lands.
+  useLayoutEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
 
   const { data: veniceStatus } = useVeniceStatus();
   const { upsertJob, removeJob } = useJobStore();
@@ -182,33 +186,40 @@ export function useBatchQueue(options: UseBatchQueueOptions = {}): UseBatchQueue
   }, [upsertJob]);
 
   const updateItem = useCallback((id: string, updates: Partial<BatchItem>) => {
-    setItems((prev) => {
-      const next = prev.map((item) => (item.id === id ? { ...item, ...updates } : item));
-      const updated = next.find((i) => i.id === id);
-      if (updated) {
-        // Persist to IndexedDB (without non-serialisable File object)
-        const persisted: PersistedJob = {
-          id: updated.id,
-          filename: updated.filename,
-          side: updated.side,
-          material: updated.material,
-          orientation: updated.orientation,
-          state: updated.state,
-          progress: updated.progress,
-          error: updated.error,
-          analysis: updated.analysis,
-          cleanedDataUrl: updated.cleanedUrl,
-          previewDataUrl: null, // omit blob URL – not serialisable
-          strength: updated.strength,
-          priority: updated.priority,
-          createdAt: updated.createdAt,
-          completedAt: updated.state === 'complete' ? Date.now() : null,
-        };
-        upsertJob(persisted);
-      }
-      return next;
-    });
-  }, [upsertJob]);
+    // Pure updater: React runs it during render, so no store writes here
+    // (persisting to IndexedDB happens in the effect below).
+    setItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...updates } : item)));
+  }, []);
+
+  // Persist changed items to IndexedDB after commit. Items are immutable
+  // objects, so a changed reference means a changed item.
+  const persistedRef = useRef<Map<string, BatchItem>>(new Map());
+  useEffect(() => {
+    const seen = persistedRef.current;
+    for (const item of items) {
+      if (seen.get(item.id) === item) continue;
+      seen.set(item.id, item);
+      const persisted: PersistedJob = {
+        id: item.id,
+        filename: item.filename,
+        side: item.side,
+        material: item.material,
+        orientation: item.orientation,
+        state: item.state,
+        progress: item.progress,
+        error: item.error,
+        analysis: item.analysis,
+        cleanedDataUrl: item.cleanedUrl,
+        previewDataUrl: null, // omit blob URL – not serialisable
+        strength: item.strength,
+        priority: item.priority,
+        createdAt: item.createdAt,
+        completedAt: item.state === 'complete' ? Date.now() : null,
+      };
+      upsertJob(persisted);
+    }
+    for (const id of [...seen.keys()]) if (!items.some((i) => i.id === id)) seen.delete(id);
+  }, [items, upsertJob]);
 
   const processItem = useCallback(
     async (item: BatchItem): Promise<void> => {
@@ -366,6 +377,9 @@ export function useBatchQueue(options: UseBatchQueueOptions = {}): UseBatchQueue
       // Process up to maxConcurrency items in parallel
       const batch = queuedItems.slice(0, maxConcurrency);
       await Promise.all(batch.map((item) => processItem(item)));
+      // Yield a macrotask so React commits those updates (and itemsRef catches
+      // up) before the loop decides whether anything is still queued/active.
+      await new Promise((resolve) => setTimeout(resolve, 0));
     }
   }, [maxConcurrency, processItem]);
 

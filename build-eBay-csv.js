@@ -180,7 +180,16 @@ function buildRow(card, idx) {
     /\bauto\b|\bautograph\b|\bsignature\b|\bsigned\b/.test(nameSetStr);
   if (isRookie && !/\brc\b/i.test(title) && !/\brookie\b/i.test(title)) title += ' RC';
   if (isAuto && !/\bauto\b/i.test(title) && !/\bautograph\b/i.test(title)) title += ' Auto';
-  if (title.length > 80) title = title.substring(0, 80).trim();
+  if (title.length > 80) {
+    // Cut at the 80-char eBay limit, but never mid-word: back off to the last
+    // space unless that would discard most of the title.
+    let cut = title.slice(0, 80);
+    if (!/\s/.test(title[80])) {
+      const sp = cut.lastIndexOf(' ');
+      if (sp > 40) cut = cut.slice(0, sp);
+    }
+    title = cut.trim();
+  }
 
   // --- UPC ---
   const upc = 'Does not apply';
