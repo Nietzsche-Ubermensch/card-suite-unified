@@ -13,7 +13,9 @@ import {
   Signal,
   DollarSign,
   Coins,
-  AlertTriangle, Tag } from 'lucide-react';
+  AlertTriangle,
+  Tag,
+} from 'lucide-react';
 import type { WorkspaceView } from '@/types';
 import { cn } from '@/lib/utils';
 

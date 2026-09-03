@@ -290,9 +290,15 @@ app.post('/api/cards/comps', (req, res) => {
     if (!card || typeof card !== 'object' || Array.isArray(card)) {
       return res.status(400).json({ error: 'card must be an object' });
     }
-    // Accept either a raw extraction or an already-normalised card.
-    const normalized = card.setName || card.playerName ? card : null;
-    const { card: norm, warnings } = normalized && card.yearSource
+    // Accept either a raw extraction or an already-normalised card. Detect the
+    // difference STRUCTURALLY: a truthiness test on yearSource let a raw
+    // extraction that merely carried that one field skip normalisation, and the
+    // resulting search silently lost its year, parallel and print run.
+    // normalizeCard is not idempotent (it reads copyrightYear, which a
+    // normalised card no longer has), so this branch has to be exact. Every
+    // normalised card has all three keys, though any of them may be null.
+    const isNormalized = ['yearSource', 'setName', 'printRun'].every((k) => k in card);
+    const { card: norm, warnings } = isNormalized
       ? { card, warnings: [] }
       : cards.normalizeCard(card);
     if (!norm.playerName) return res.status(400).json({ error: 'card.playerName is required to build a search' });

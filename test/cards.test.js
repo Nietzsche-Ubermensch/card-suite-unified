@@ -280,6 +280,28 @@ test('a normalized card feeds the real eBay CSV builder', () => {
   assert.ok(cols.Title.length <= 80);
 });
 
+// The comps endpoint must tell a raw extraction from an already-normalised card
+// before deciding whether to normalise, and normalizeCard is NOT idempotent — it
+// reads copyrightYear, which a normalised card no longer carries. A truthiness
+// check on yearSource let a raw extraction carrying that one field skip
+// normalisation, and the search silently lost its year, parallel and print run.
+test('normalised cards are told from raw extractions by structure, not one field', () => {
+  const isNormalized = (card) => ['yearSource', 'setName', 'printRun'].every((k) => k in card);
+
+  const { card: real } = C.normalizeCard(JULIA_RAW);
+  assert.equal(isNormalized(real), true, 'a real normalised card must be recognised');
+
+  // A raw extraction that happens to carry yearSource is still raw.
+  assert.equal(isNormalized({ ...JULIA_RAW, yearSource: 'copyright' }), false);
+  assert.equal(isNormalized({ playerName: 'Aaron Judge', yearSource: 'copyright' }), false);
+
+  // The keys are present-but-null on a card with nothing to fill them in.
+  const { card: sparse } = C.normalizeCard({ playerName: 'Aaron Judge' });
+  assert.equal(sparse.setName, null);
+  assert.equal(sparse.printRun, null);
+  assert.equal(isNormalized(sparse), true, 'null values must not read as "raw"');
+});
+
 test('a rookie base card round-trips through the CSV as a rookie', () => {
   const { card } = C.normalizeCard(MINA_RAW);
   assert.equal(card.cardNumber, '22');
