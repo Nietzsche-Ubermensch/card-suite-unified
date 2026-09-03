@@ -246,8 +246,10 @@ export default function PriceCheck() {
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ front: frontB64, back: backB64 }),
       });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
+      // Same defensive parse as the comps fetch: a restarting API answers with
+      // HTML, and "Unexpected token <" is not something a user can act on.
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body) throw new Error(body?.error || `Card identification returned HTTP ${res.status}.`);
 
       const c: CardIdentity = body.card;
       // An inferred year must not be written into the copyright-year box: doing
@@ -276,7 +278,9 @@ export default function PriceCheck() {
       });
       toast.success(`Identified ${c.playerName ?? 'card'}${c.confidence != null ? ` (${Math.round(c.confidence * 100)}% confident)` : ''}`);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      const msg = e instanceof TypeError
+        ? 'Could not reach the identification service — is the API running?'
+        : e instanceof Error ? e.message : String(e);
       setIdentifyError(msg);
       toast.error(/VENICE_API_KEY/.test(msg) ? 'Card identification needs a Venice API key — fill the fields in by hand to get comps.' : msg);
     } finally {

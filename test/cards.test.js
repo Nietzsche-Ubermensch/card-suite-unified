@@ -86,6 +86,17 @@ test('parallels: a visual description resolves to the term sellers actually type
 
   // a bare colour is itself a searchable parallel ("Red /299")
   assert.equal(C.matchParallel('Red', { manufacturer: 'Upper Deck' }).name, 'Red');
+
+  // A multi-word colour must survive the bare-colour fallback whole. The
+  // leftover regex alternates over COLOR_WORDS in declaration order, where
+  // "gold" precedes "rose gold" — that is safe, because alternation is tried
+  // left-to-right at each START position and "gold" cannot match at position 0
+  // of "rose gold", so the longer phrase wins there. This asserts the outcome
+  // so a future reordering (or a switch to a non-anchored scan) is caught.
+  const noRoseGold = { manufacturer: 'Panini', product: 'Prizm' };
+  assert.equal(C.matchParallel('Rose Gold', noRoseGold).name, 'Rose Gold');
+  assert.equal(C.matchParallel('rose gold parallel', noRoseGold).name, 'Rose Gold');
+  assert.equal(C.matchParallel('Rose Gold', noRoseGold).color, 'rose gold');
   assert.equal(C.matchParallel('Red', { manufacturer: 'Upper Deck' }).base, null);
 
   // never guess: an unrecognised surface returns null rather than a wrong term
