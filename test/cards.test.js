@@ -125,6 +125,22 @@ test('identity: the card year is the copyright year, and an inferred year says s
   assert.equal(C.resolveYear({ copyrightYear: ' 2025 ' }).source, 'copyright');
   assert.equal(C.resolveYear({ statsYear: '2024' }).year, 2025);
   assert.equal(C.resolveYear({ copyrightYear: 'twenty' }).year, null);
+
+  // The Price Check page sends statsYear back on every refresh instead of
+  // writing an inferred year into the copyright-year box. If it wrote the
+  // inferred year there, the next refresh would read it back as a year taken
+  // off the copyright line and the "confirm this" warning would vanish for a
+  // year nobody ever read. This asserts the round-trip the UI relies on.
+  const firstPass = C.normalizeCard({ playerName: 'Aaron Judge', statsYear: 2024 });
+  assert.equal(firstPass.card.year, 2025);
+  assert.equal(firstPass.card.yearSource, 'stats-inferred');
+  assert.equal(firstPass.card.statsYear, 2024);
+  assert.ok(firstPass.warnings.some((w) => /inferred/i.test(w)));
+
+  const refresh = C.normalizeCard({ playerName: 'Aaron Judge', copyrightYear: null, statsYear: String(firstPass.card.statsYear) });
+  assert.equal(refresh.card.year, 2025);
+  assert.equal(refresh.card.yearSource, 'stats-inferred');
+  assert.ok(refresh.warnings.some((w) => /inferred/i.test(w)), 'the inferred-year warning must survive a refresh');
 });
 
 test('identity: serials and grades parse into the pieces a search needs', () => {
@@ -259,7 +275,7 @@ test('a rookie base card round-trips through the CSV as a rookie', () => {
   assert.equal(card.isRookie, true);
   const cols = parseRow(buildRow(C.toCardRecord(card, { price: 4.99 }), 0));
   assert.match(cols.Title, /\bRC\b/);
-  assert.equal(cols['C:Card Number'] ?? cols['C:Card Number'], cols['C:Card Number']);
+  assert.equal(cols['C:Card Number'], '22');
 });
 
 test('extract: the request carries both sides, the schema, and the domain rules', () => {

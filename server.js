@@ -285,7 +285,11 @@ app.get('/api/cards/parallels', (req, res) => {
 app.post('/api/cards/comps', (req, res) => {
   try {
     const { card } = req.body;
-    if (!card || typeof card !== 'object') return res.status(400).json({ error: 'card object required' });
+    // typeof [] is 'object', and an array would fall through to a confusing
+    // "card.playerName is required" instead of naming the real problem.
+    if (!card || typeof card !== 'object' || Array.isArray(card)) {
+      return res.status(400).json({ error: 'card must be an object' });
+    }
     // Accept either a raw extraction or an already-normalised card.
     const normalized = card.setName || card.playerName ? card : null;
     const { card: norm, warnings } = normalized && card.yearSource

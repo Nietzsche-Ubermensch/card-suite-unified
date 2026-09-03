@@ -28,6 +28,7 @@ const EMPTY: CardDraft = {
   manufacturer: '',
   productSet: '',
   copyrightYear: '',
+  statsYear: '',
   cardNumber: '',
   serialNumber: '',
   parallelType: '',
@@ -125,7 +126,12 @@ export default function PriceCheck() {
   const [comps, setComps] = useState<CardComps | null>(null);
   const [identity, setIdentity] = useState<CardIdentity | null>(null);
   const [warnings, setWarnings] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  // Two different failures with two different lifetimes: a comps error belongs
+  // to the current search and must not outlive it, while an identify error
+  // (a missing Venice key, say) is about the upload and stays until the next
+  // attempt — clearing the player name should not hide it.
+  const [compsError, setCompsError] = useState<string | null>(null);
+  const [identifyError, setIdentifyError] = useState<string | null>(null);
 
   // Object URLs are revoked on replace/unmount so previews don't leak.
   useEffect(() => () => { if (frontUrl) URL.revokeObjectURL(frontUrl); }, [frontUrl]);
@@ -168,6 +174,9 @@ export default function PriceCheck() {
       manufacturer: draft.manufacturer.trim() || null,
       productSet: draft.productSet.trim() || null,
       copyrightYear: draft.copyrightYear.trim() ? Number(draft.copyrightYear.trim()) : null,
+      // Sent so the server re-derives the same inferred year AND re-emits its
+      // "confirm this against the card back" warning on every refresh.
+      statsYear: draft.statsYear.trim() ? Number(draft.statsYear.trim()) : null,
       cardNumber: draft.cardNumber.trim() || null,
       serialNumber: draft.serialNumber.trim() || null,
       parallelType: draft.parallelType.trim() || null,
@@ -189,6 +198,14 @@ export default function PriceCheck() {
   useEffect(() => {
     if (!hasPlayer) return; // nothing to search for; render derives the empty state
     const mine = ++seq.current;
+    // Links from the previous card next to an error message would read as
+    // comps for the card on screen, so a failure drops them.
+    const fail = (message: string) => {
+      setCompsError(message);
+      setComps(null);
+      setIdentity(null);
+      setWarnings([]);
+    };
     const timer = setTimeout(async () => {
       try {
         const res = await fetch('/api/cards/comps', {
@@ -196,15 +213,20 @@ export default function PriceCheck() {
           headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
           body: JSON.stringify({ card: cardPayload }),
         });
-        const body = await res.json();
+        // A dead or restarting API answers with something that isn't JSON, and
+        // "Unexpected end of JSON input" tells the user nothing about why their
+        // comps stopped updating.
+        const body = await res.json().catch(() => null);
         if (mine !== seq.current) return; // a newer edit already won
-        if (!res.ok) { setError(body.error || `HTTP ${res.status}`); return; }
-        setError(null);
+        if (!res.ok || !body) return fail(body?.error || `The comps service returned HTTP ${res.status}.`);
+        setCompsError(null);
         setComps(body.comps);
         setIdentity(body.card);
         setWarnings(body.warnings ?? []);
       } catch (e) {
-        if (mine === seq.current) setError(e instanceof Error ? e.message : String(e));
+        if (mine === seq.current) {
+          fail(e instanceof TypeError ? 'Could not reach the comps service — is the API running?' : e instanceof Error ? e.message : String(e));
+        }
       }
     }, 300);
     return () => clearTimeout(timer);
@@ -213,7 +235,7 @@ export default function PriceCheck() {
   const identify = useCallback(async () => {
     if (!front && !back) return;
     setIdentifying(true);
-    setError(null);
+    setIdentifyError(null);
     try {
       const [frontB64, backB64] = await Promise.all([
         front ? fileToBase64(front) : Promise.resolve(null),
@@ -228,13 +250,20 @@ export default function PriceCheck() {
       if (!res.ok) throw new Error(body.error || `HTTP ${res.status}`);
 
       const c: CardIdentity = body.card;
+      // An inferred year must not be written into the copyright-year box: doing
+      // that makes the next refresh read it back as a year taken off the
+      // copyright line, and the "confirm this against the card back" warning
+      // disappears for a year nobody ever read. Keep the stats year instead and
+      // let the server re-infer — and re-warn — every time.
+      const inferred = c.yearSource === 'stats-inferred';
       setDraft({
         playerName: c.playerName ?? '',
         team: c.team ?? '',
         sport: (c.sport as CardDraft['sport']) ?? 'other',
         manufacturer: c.manufacturer ?? '',
         productSet: c.productSet ?? '',
-        copyrightYear: c.year ? String(c.year) : '',
+        copyrightYear: !inferred && c.year ? String(c.year) : '',
+        statsYear: c.statsYear ? String(c.statsYear) : '',
         cardNumber: c.cardNumber ?? '',
         serialNumber: c.serial ?? '',
         parallelType: c.parallel ?? '',
@@ -248,7 +277,7 @@ export default function PriceCheck() {
       toast.success(`Identified ${c.playerName ?? 'card'}${c.confidence != null ? ` (${Math.round(c.confidence * 100)}% confident)` : ''}`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setError(msg);
+      setIdentifyError(msg);
       toast.error(/VENICE_API_KEY/.test(msg) ? 'Card identification needs a Venice API key — fill the fields in by hand to get comps.' : msg);
     } finally {
       setIdentifying(false);
@@ -260,6 +289,9 @@ export default function PriceCheck() {
   const shownComps = hasPlayer ? comps : null;
   const shownWarnings = hasPlayer ? warnings : [];
   const shownIdentity = hasPlayer ? identity : null;
+  // A comps error belongs to a search that is no longer running once the player
+  // name is cleared; an identify error is about the upload and outlives it.
+  const shownError = identifyError ?? (hasPlayer ? compsError : null);
   const hasImages = Boolean(front || back);
 
   return (
@@ -336,10 +368,10 @@ export default function PriceCheck() {
             {shownIdentity?.setName && <Badge variant="secondary" className="text-[11px]">{shownIdentity.setName}</Badge>}
           </div>
 
-          {error && (
+          {shownError && (
             <div className="flex gap-2 rounded-md border border-status-error/30 bg-status-error/10 p-2.5 text-xs text-status-error">
               <TriangleAlert className="size-3.5 shrink-0 mt-px" />
-              <span>{error}</span>
+              <span>{shownError}</span>
             </div>
           )}
 
@@ -350,7 +382,7 @@ export default function PriceCheck() {
             </div>
           ))}
 
-          {!shownComps && !error && (
+          {!shownComps && !shownError && (
             <p className="text-sm text-text-tertiary py-8 text-center">
               Enter a player name to build comp searches.
             </p>

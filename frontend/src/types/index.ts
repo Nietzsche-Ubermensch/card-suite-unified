@@ -107,6 +107,8 @@ export interface CardDraft {
   manufacturer: string;
   productSet: string;
   copyrightYear: string;
+  /** Kept out of the copyright-year box: it is what the year was INFERRED from. */
+  statsYear: string;
   cardNumber: string;
   serialNumber: string;
   parallelType: string;
@@ -128,6 +130,7 @@ export interface CardIdentity {
   productSet: string | null;
   year: number | null;
   yearSource: 'copyright' | 'stats-inferred' | 'none';
+  statsYear: number | null;
   setName: string | null;
   cardNumber: string | null;
   serial: string | null;
