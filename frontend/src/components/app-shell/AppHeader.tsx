@@ -1,11 +1,12 @@
 import { memo } from 'react';
-import { Menu, Scan, Layers, Columns3, Download, Settings } from 'lucide-react';
+import { Menu, Scan, Layers, Columns3, Download, Settings, Tag } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WorkspaceView } from '@/types';
 
 const VIEW_TITLES: Record<WorkspaceView, { title: string; subtitle: string }> = {
   'scan-cleanup': { title: 'Scan Cleanup', subtitle: 'Single card scan analysis and AI cleanup' },
   'batch-cleanup': { title: 'Batch Cleanup', subtitle: 'Process multiple cards in parallel' },
+  'price-check': { title: 'Price Check', subtitle: 'Identify a card and jump to its sold comps' },
   'compare': { title: 'Compare Results', subtitle: 'Side-by-side before and after comparison' },
   'export': { title: 'Export', subtitle: 'Download cleaned card images as ZIP' },
 };
@@ -13,6 +14,7 @@ const VIEW_TITLES: Record<WorkspaceView, { title: string; subtitle: string }> = 
 const VIEW_ICONS: Record<WorkspaceView, React.ElementType> = {
   'scan-cleanup': Scan,
   'batch-cleanup': Layers,
+  'price-check': Tag,
   'compare': Columns3,
   'export': Download,
 };

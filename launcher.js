@@ -26,7 +26,8 @@ async function run() {
   }
   console.log('[STAGE 1] Complete');
   console.log('[STAGE 2] CSV generation...');
-  require('./build-eBay-csv');
+  // require() alone only loads the module — run() is what writes the CSV.
+  require('./build-eBay-csv').run();
   console.log('[STAGE 2] Complete');
   console.log('=== Pipeline Finished ===');
 }
