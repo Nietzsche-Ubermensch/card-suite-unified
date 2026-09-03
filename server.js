@@ -8,6 +8,7 @@ const { WebSocketServer } = require('ws');
 const { buildRow, HEADERS } = require('./build-eBay-csv');
 const { Readable } = require('stream');
 const pipeline = require('./lib/pipeline');
+const cards = require('./lib/cards');
 
 const app = express();
 app.use(cors());
@@ -265,6 +266,81 @@ app.delete('/api/cards/:id', (req, res) => {
   saveDB(db);
   syncCardsToFile(db);
   res.json({ deleted: id, remaining: db.cards.length });
+});
+
+// ─── Card Identification & Comps (sports/wrestling only, see lib/cards) ───
+
+// GET /api/cards/parallels — the searchable-parallel reference the UI offers
+app.get('/api/cards/parallels', (req, res) => {
+  const { manufacturer, product } = req.query;
+  res.json({
+    sports: cards.SPORTS,
+    products: cards.PRODUCTS.map((p) => ({ manufacturer: p.manufacturer, product: p.product, parallels: p.parallels.map((x) => x.name) })),
+    parallels: cards.parallelsFor({ manufacturer, product }),
+  });
+});
+
+// POST /api/cards/comps — build sold-listing searches from a known card.
+// Pure local URL building: no API key, no network, nothing fetched.
+app.post('/api/cards/comps', (req, res) => {
+  try {
+    const { card } = req.body;
+    if (!card || typeof card !== 'object') return res.status(400).json({ error: 'card object required' });
+    // Accept either a raw extraction or an already-normalised card.
+    const normalized = card.setName || card.playerName ? card : null;
+    const { card: norm, warnings } = normalized && card.yearSource
+      ? { card, warnings: [] }
+      : cards.normalizeCard(card);
+    if (!norm.playerName) return res.status(400).json({ error: 'card.playerName is required to build a search' });
+    res.json({ card: norm, comps: cards.compsFor(norm), record: cards.toCardRecord(norm, { price: card.price ?? null, quantity: card.quantity ?? 1 }), warnings });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// POST /api/cards/extract — card image(s) -> structured identity + comps.
+// Front and back together: the front carries the parallel, the back carries
+// the card number and the copyright year.
+app.post('/api/cards/extract', async (req, res) => {
+  try {
+    const { front, back, model, cardId, price, quantity, scope } = req.body;
+    if (!front && !back) return res.status(400).json({ error: 'front and/or back image (base64 or data URL) required' });
+
+    const chat = async (body) => {
+      const resp = await fetch(`${VENICE_BASE}/chat/completions`, {
+        method: 'POST',
+        headers: veniceHeaders(),
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) {
+        const t = await resp.text();
+        const err = new Error(`Venice API ${resp.status}: ${t.substring(0, 300)}`);
+        err.status = resp.status;
+        throw err;
+      }
+      return resp.json();
+    };
+
+    const out = await cards.extractCard({
+      front, back, model: model || cards.DEFAULT_MODEL, scope,
+      price: price ?? null, quantity: quantity ?? 1, chat,
+    });
+
+    // Persist onto the card record so the eBay CSV picks it up.
+    let saved = null;
+    if (cardId != null) {
+      const db = loadDB();
+      const idx = db.cards.findIndex((c) => c.id === parseInt(cardId, 10));
+      if (idx === -1) return res.status(404).json({ error: `Card ${cardId} not found` });
+      db.cards[idx] = { ...db.cards[idx], ...out.record, id: db.cards[idx].id, aiStatus: 'identified' };
+      saveDB(db);
+      syncCardsToFile(db);
+      saved = db.cards[idx];
+    }
+    res.json({ ...out, saved });
+  } catch (e) {
+    if (e.code === 'SCHEMA_MISMATCH') return res.status(422).json({ error: e.message, details: e.details });
+    const status = /VENICE_API_KEY not found/.test(e.message) ? 503 : (e.status || 500);
+    res.status(status).json({ error: e.message });
+  }
 });
 
 app.post('/api/preview', (req, res) => {

@@ -20,6 +20,7 @@ import CompareResults from '@/pages/CompareResults';
 // Pages — lazy (heavy deps: recharts, TanStack Table, JSZip)
 const ModelCatalog = lazy(() => import('@/pages/ModelCatalog'));
 const ExportPage = lazy(() => import('@/pages/ExportPage'));
+const PriceCheck = lazy(() => import('@/pages/PriceCheck'));
 import SettingsDialog from '@/components/settings/SettingsDialog';
 
 function PageSkeleton() {
@@ -33,7 +34,7 @@ function PageSkeleton() {
 type AppView = WorkspaceView | 'assistant' | 'model-catalog' | 'api-status' | 'settings';
 
 function isWorkspaceView(view: AppView): view is WorkspaceView {
-  return ['scan-cleanup', 'batch-cleanup', 'compare', 'export'].includes(view);
+  return ['scan-cleanup', 'batch-cleanup', 'price-check', 'compare', 'export'].includes(view);
 }
 
 export default function App() {
@@ -79,6 +80,12 @@ export default function App() {
         return <ScanCleanup />;
       case 'batch-cleanup':
         return <BatchCleanup />;
+      case 'price-check':
+        return (
+          <Suspense fallback={<PageSkeleton />}>
+            <PriceCheck />
+          </Suspense>
+        );
       case 'compare':
         return <CompareResults />;
       default:

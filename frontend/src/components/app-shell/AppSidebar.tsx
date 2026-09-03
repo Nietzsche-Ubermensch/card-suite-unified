@@ -13,8 +13,7 @@ import {
   Signal,
   DollarSign,
   Coins,
-  AlertTriangle,
-} from 'lucide-react';
+  AlertTriangle, Tag } from 'lucide-react';
 import type { WorkspaceView } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -28,6 +27,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { id: 'scan-cleanup', label: 'Scan Cleanup', icon: Scan, section: 'workspace' },
   { id: 'batch-cleanup', label: 'Batch Cleanup', icon: Layers, section: 'workspace' },
+  { id: 'price-check', label: 'Price Check', icon: Tag, section: 'workspace' },
   { id: 'compare', label: 'Compare Results', icon: Columns3, section: 'workspace' },
   { id: 'export', label: 'Export', icon: Download, section: 'workspace' },
   { id: 'assistant', label: 'Assistant', icon: MessageSquare, section: 'ai' },

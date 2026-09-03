@@ -2,7 +2,7 @@ export type MaterialType = 'cardboard' | 'chrome' | 'refractor' | 'unknown';
 export type Orientation = 'horizontal' | 'vertical' | 'unknown';
 export type BatchItemState = 'queued' | 'analyzing' | 'cleaning' | 'complete' | 'paused' | 'cancelled' | 'failed';
 export type JobPriority = 'low' | 'normal' | 'high';
-export type WorkspaceView = 'scan-cleanup' | 'batch-cleanup' | 'compare' | 'export';
+export type WorkspaceView = 'scan-cleanup' | 'batch-cleanup' | 'price-check' | 'compare' | 'export';
 export type ModelCategory = 'chat' | 'analysis' | 'restore' | 'image';
 
 export interface VeniceModel {
@@ -93,4 +93,73 @@ export interface ChatMessage {
   content: string;
   attachments?: Array<{ filename: string; dataUrl: string }>;
   timestamp: number;
+}
+
+// ─── Card identification & comps (see lib/cards on the server) ───
+
+export type CardSport = 'baseball' | 'basketball' | 'football' | 'hockey' | 'soccer' | 'wrestling' | 'racing' | 'other';
+
+/** The editable form state on the Price Check page. */
+export interface CardDraft {
+  playerName: string;
+  team: string;
+  sport: CardSport;
+  manufacturer: string;
+  productSet: string;
+  copyrightYear: string;
+  cardNumber: string;
+  serialNumber: string;
+  parallelType: string;
+  insertSet: string;
+  isRookie: boolean;
+  isAutograph: boolean;
+  isMemorabilia: boolean;
+  gradingCompany: string;
+  grade: string;
+}
+
+/** A normalized card as the server returns it. */
+export interface CardIdentity {
+  playerName: string | null;
+  team: string | null;
+  sport: CardSport | null;
+  league: string | null;
+  manufacturer: string | null;
+  productSet: string | null;
+  year: number | null;
+  yearSource: 'copyright' | 'stats-inferred' | 'none';
+  setName: string | null;
+  cardNumber: string | null;
+  serial: string | null;
+  printRun: number | null;
+  isOneOfOne: boolean;
+  parallel: string | null;
+  insertSet: string | null;
+  isRookie: boolean;
+  isAutograph: boolean;
+  isMemorabilia: boolean;
+  isShortPrint: boolean;
+  visualKeywords: string[];
+  gradingCompany: string | null;
+  grade: string | null;
+  isGraded: boolean;
+  certNumber: string | null;
+  confidence: number | null;
+  notes: string | null;
+}
+
+export interface CompSearch {
+  tier: 'exact' | 'parallel' | 'base' | 'player' | 'broad';
+  description: string;
+  query: string;
+  soldUrl: string;
+  activeUrl: string;
+}
+
+export interface CardComps {
+  marketplace: string;
+  category: number;
+  recommended: CompSearch['tier'];
+  searches: CompSearch[];
+  notes: string[];
 }
